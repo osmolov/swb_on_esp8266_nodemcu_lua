@@ -150,7 +150,7 @@ void handleRoot()
   message += F("</head>\n");
   message += F("<body>\n");
   message += F("<form>\n");
-  message += F("<h3>Управление котлом v.2.4</h3><p>\n");
+  message += F("<h3>Управление котлом v.2.4.mqtt</h3><p>\n");
   message += F("<span id=\"timeStr\">.</span><br>\n");
   message += F("Время работы: <span id=\"TimeOn\">.</span></p>\n");
   message += F("<input type=\"checkbox\" class=\"checkbox\" id=\"relay1\" onchange=\"openUrl('/switch?swt1=' + this.checked);\" ");
@@ -186,6 +186,7 @@ void handleRoot()
   message += F("<input type = \"button\" class=\"menu_but\" value=\"Выбор программы\" onclick=\"location.href='/selprog';\" /><br>\n");
   message += F("<p>");
   message += F("<input type = \"button\" class=\"menu_but\" id=\"butt_adjWifi\" value=\"Настройка Wi-fi\" onclick=\"location.href='/wifi';\" /><br>\n");
+  message += F("<input type = \"button\" class=\"menu_but\" id=\"butt_adjMQTT\" value=\"Настройка MQTT\" onclick=\"location.href='/mqtt';\" /><br>\n");
   message += F("<input type = \"button\" class=\"menu_but\" id=\"butt_adjTime\" value=\"Настройка времени\" onclick=\"location.href='/timeConf';\" /><br>\n");
   message += F("<input type = \"button\" class=\"menu_but\" id=\"butt_adjDevPrg\" value=\"Обновление прошивки\" onclick=\"location.href='/update';\" /><br>\n");
   message += F("<input type = \"button\" class=\"menu_but\" value=\"Менеджер файлов\" onclick=\"location.href='/spiffs';\" /><br>\n");
@@ -458,7 +459,8 @@ void save_SensorConfFile()
         if (k != 7) strM += F(",");
       }
       strM += F("],");
-      strM += F("\"tNameSens\":\""); strM += String(tNameSens[i]) + F("\"");
+      strM += F("\"tNameSens\":\""); strM += String(tNameSens[i]) + F("\",");
+      strM += F("\"tdelta\":\""); strM += String(tdelta[i]) + F("\"");
       strM += F("}");
       Serial.println(strM);
       f.println(strM);
@@ -714,6 +716,12 @@ void h_save() //save
     else if (argName == F("AccessLogin"))     AccessLogin = argValue;
     else if (argName == F("AccessPassword"))     AccessPassword = argValue;
 
+    else if (argName == F("mqttServer"))     mqttServer = argValue;
+    else if (argName == F("mqttServerPort"))     mqttServerPort = constrain(argValue.toInt(), 1024, 65535);
+    else if (argName == F("mqttUser"))     mqttUser = argValue;
+    else if (argName == F("mqttUserPassword"))     mqttUserPassword = argValue;
+    else if (argName == F("mqttClientId"))     mqttClientId = argValue;
+
     else if (argName == F("ip1"))               ip1 = constrain(argValue.toInt(), 0, 255);
     else if (argName == F("ip2"))               ip2 = constrain(argValue.toInt(), 0, 255);
     else if (argName == F("ip3"))               ip3 = constrain(argValue.toInt(), 0, 255);
@@ -844,6 +852,11 @@ void h_save() //save
       argN = F("tNameSens"); argN += String(k);
       if (argName == argN) tNameSens[k] = argValue;
     }
+    for (uint8_t k = 0; k < NSenseMax; k++)  {
+      String argN;
+      argN = F("tdelta"); argN += String(k);
+      if (argName == argN) tdelta[k] = argValue.toFloat();
+    }
   }
   writeConfig();
   save_SensorConfFile();
@@ -929,6 +942,19 @@ void h_select()//select
   message += textStyle();
   message += F("</style>");
   message += F("<script type=\"text/javascript\">");
+  message += F("function tdelta(elName, diff){");
+  message += F("if (isNaN(parseFloat(document.getElementById(elName).value,10))==true) document.getElementById(elName).value=0;");
+  message += F("if (isNaN(parseFloat(document.getElementById(elName).value,10))==false) document.getElementById(elName).value=parseFloat(document.getElementById(elName).value,10);");
+  message += F("var count = parseFloat(document.getElementById(elName).value,10);");
+  message += F("count = count + diff;");
+  message += F("if (count < -10) count = -10;");
+  message += F("if (count > 10) count = 10;");
+  message += F("document.getElementById(elName).value = precisionRound(count, 2);");
+  message += F("}");
+  message += F("function precisionRound(number, precision) {");
+  message += F("var factor = Math.pow(10, precision);");
+  message += F("return Math.round(number * factor) / factor;");
+  message += F("}");
   message += F("function openUrl(url) {");
   message += F("var request = new XMLHttpRequest();");
   message += F("request.open('GET', url, true);");
@@ -982,7 +1008,7 @@ void h_select()//select
   message += F("/><label for=\"relay3Level\">Отбор</label>");
   message += F("</fieldset>");
 
-  message += F("&nbsp;<fieldset style=\"width: 304px\">");
+  message += F("&nbsp;<fieldset style=\"width: 520px\">");
   message += F("<legend><b>Активация датчиков</b></legend>");
   message += F("<br>");
 
@@ -992,9 +1018,13 @@ void h_select()//select
       message += F("\" onchange=\"openUrl('/switch?SenseStatus"); message += String(i); message += F("=' + this.checked);\" ");
       if (t[i] == 1) message += F("checked ");
       message += F("/><label for=\"t"); message += String(i); message += F("\">Датчик "); message += String(i); message += F(" </label>");
-      message += F("<input type=\"text\" name=\"tNameSens"); message += String(i); message += F("\" id=\"tNameSens"); message += String(i) + (" maxlength=\"30\" value=\"");
+      message += F("<input type=\"text\" name=\"tNameSens"); message += String(i); message += F("\" id=\"tNameSens"); message += String(i) + ("\" maxlength=\"30\" value=\"");
       message += tNameSens[i]; message += F("\" />");
 
+      message += F("<input type=\"button\" value=\"-1\" onclick=\"tdelta('tdelta"); message += String(i); message += F("', -1)\"/><input type=\"button\" value=\"-0.01\" onclick=\"tdelta('tdelta"); message += String(i); message += F("', -0.01)\"/>");
+      message += F("<input readonly size=\"5\" name=\"tdelta"); message += String(i); message += F("\" id=\"tdelta"); message += String(i); message += F("\" value=\""); message += String(tdelta[i]); message += F("\"/>");
+      message += F("<input type=\"button\" value=\"+0.01\" onclick=\"tdelta('tdelta"); message += String(i); message += F("', 0.01)\"/><input type=\"button\" value=\"+1\" onclick=\"tdelta('tdelta"); message += String(i); message += F("', 1)\"/>");
+      
       message += F("<p>");
     }
   }
@@ -1025,7 +1055,7 @@ void h_select()//select
   if (error_read_correct_ds_all > 0) {
     message += F("Корректность чтения t (всего): "); message += String(error_read_correct_ds_all) + F("<br />");
   }
-  message += F("<input type=\"button\" id=\"butt_search_sense\" value=\"Поиск\" onclick=\"openUrl('/switch?Srch=' + '1'); location.href='/selectProm'; \" >\n");
+  message += F("<input type=\"button\" id=\"butt_search_sense\" value=\"Поиск\" onclick=\"openUrl('/switch?Srch=1'); location.href='/selectProm'; \" >\n");
 
   //openUrl('/switch?SaveSense=1');
   //message += F("<input type=\"button\" id=\"butt_search_sense\" value=\"Сохр датчики\" onclick=\"openUrl('/switch?SaveSense=1');\" >\n");

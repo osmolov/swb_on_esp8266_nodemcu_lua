@@ -71,6 +71,10 @@ void h_switch()//switch
       if (argValue == F("true")) AccessMode  = 1;
       else AccessMode = 0;
     }
+    else if (argName == F("useMQTT")) {
+      if (argValue == F("true")) useMQTT  = 1;
+      else useMQTT = 0;
+    }
     else if (argName == F("Prg_Save")) {
       /*if (NumStrPrgAll > 2) {
         Serial.println("Try open " + NameProg);

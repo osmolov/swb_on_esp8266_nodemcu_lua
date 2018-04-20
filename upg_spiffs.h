@@ -595,6 +595,105 @@ void h_wifi()//wifi
 
   server.send(200, F("text/html"), message);
 }
+//-------------------------------------------------------------------------
+void h_mqtt()//mqtt
+{
+  LoginContr();
+  String message = F("<!DOCTYPE html>\n");
+  message += F("<html>\n");
+  message += F("<head>\n");
+  message += F("<title>Настройка MQTT</title>\n");
+  message += F("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n");
+  message += F("<meta charset=\"utf-8\">\n");
+  message += F("<style type=\"text/css\">");
+  message += F(".adressfild {width: 35px; text-align: center;}");
+  message += F("</style>");
+  message += F("<script type=\"text/javascript\">\n");
+  message += F("function openUrl(url) {\n");
+  message += F("var request = new XMLHttpRequest();\n");
+  message += F("request.open('GET', url, true);\n");
+  message += F("request.send(null);\n ");
+  message += F("};\n ");
+  message += refreshTempMessage("mqtt");
+  message += F("</script>");
+  message += F("</head>\n");
+  message += F("<body>\n");
+  message += F("<form name=\"mqtt\" method=\"get\" action=\"/save\">\n");
+  message += F("<h3>Настройка MQTT</h3>\n");
+  message += F("<br />");
+  message += F("<input type = \"checkbox\" name=\"useMQTT\" id=\"useMQTT\" ");
+  if (useMQTT == true) message += F(" checked=\"checked\"");
+  message += F("onchange=\"openUrl('/switch?useMQTT=' + this.checked);\" ");
+  message += F("<label for=\"useMQTT\"> включить MQTT</label>");
+  message += F("<p>");
+
+  message += F("Адрес сервера:<br/>\n");
+  message += F("<input type=\"text\" name=\"");
+  message += F("mqttServer");
+  message += F("\" maxlength=");
+  message += String(maxStrParamLength);
+  message += F(" value=\"");
+  message += quoteEscape(mqttServer);
+  message += F("\" />\n");
+
+  message += F("<br/>\n");
+  
+  message += F("Порт:<br/>\n");
+  message += F("<input type=\"mqttServerPort\" name=\"");
+  message += F("mqttServerPort");
+  message += F("\" maxlength=");
+  message += String(maxStrParamLength);
+  message += F(" value=\"");
+  message += quoteEscape(String(mqttServerPort));
+  message += F("\" />\n");
+
+  message += F("<br/>");
+
+  message += F("Имя пользователя:<br/>\n");
+  message += F("<input type=\"mqttUser\" name=\"");
+  message += F("mqttUser");
+  message += F("\" maxlength=");
+  message += String(maxStrParamLength);
+  message += F(" value=\"");
+  message += quoteEscape(mqttUser);
+  message += F("\" />\n");
+
+  message += F("<br/>");
+
+  message += F("Пароль:<br/>\n");
+  message += F("<input type=\"mqttUserPassword\" name=\"");
+  message += F("mqttUserPassword");
+  message += F("\" maxlength=");
+  message += String(maxStrParamLength);
+  message += F(" value=\"");
+  message += quoteEscape(mqttUserPassword);
+  message += F("\" />\n");
+
+  message += F("<br/>");
+
+  message += F("ClientId (MQTT):<br/>\n");
+  message += F("<input type=\"mqttClientId\" name=\"");
+  message += F("mqttClientId");
+  message += F("\" maxlength=");
+  message += String(maxStrParamLength);
+  message += F(" value=\"");
+  message += quoteEscape(mqttClientId);
+  message += F("\" />\n");
+
+  message += F("<br/>");
+
+  message += F("<p><br/>");
+  message += F("<input type=\"button\" value=\"Назад\" onclick=\"location.href='/'\">");
+  message += F("<input type=\"submit\" value=\"Сохранить\" />\n");
+  message += F("<input type=\"hidden\" name=\"");
+  message += F("reboot");
+  message += F("\" value=\"1\" />\n");
+  message += F("</form>\n");
+  message += F("</body>\n");
+  message += F("</html>");
+
+  server.send(200, F("text/html"), message);
+}
 //--------------------------------------------------------------------------------------
 void h_reboot() {
   Serial.println(F("/reboot()"));

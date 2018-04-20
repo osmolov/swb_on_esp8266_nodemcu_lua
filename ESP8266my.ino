@@ -1,5 +1,5 @@
 //#define USE_LOG
-#define USE_LCD
+//#define USE_LCD
 //#define USE_DHT
 
 //#define USE_IRREMOTE
@@ -32,6 +32,9 @@ extern "C" {
 #include <ArduinoJson.h>
 #include <PID_v1.h>
 
+// MQTT library
+#include <PubSubClient.h>
+
 #ifdef USE_LCD
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
@@ -56,6 +59,10 @@ decode_results results;
 OneWire oneWire(ONE_WIRE_BUS);
 DallasTemperature sensors(&oneWire);
 
+DeviceAddress insideThermometer3;
+DeviceAddress insideThermometer4;
+DeviceAddress insideThermometer5;
+
 const char* const ssidAP PROGMEM = "ESP_Control";
 const char* const passwordAP PROGMEM = "Pa$$w0rd";
 const uint8_t NSenseMax = 6;
@@ -74,9 +81,15 @@ double consKp, consKi, consKd;
 PID myPID(&Input, &Output, &Setpoint, consKp, consKi, consKd, DIRECT);
 //----------------------------------------------------------------------------
 
-bool Prg, Prg_accomp;
+bool Prg, Prg_accomp, Prg_mqtt;
 bool ApMode, AccessMode;
 String AccessLogin, AccessPassword;
+
+// MQTT
+bool useMQTT;
+String mqttServer, mqttUser, mqttUserPassword, mqttClientId;
+uint16_t mqttServerPort;
+
 String ssid, password, domain;
 uint8_t ip1, ip2, ip3, ip4;
 uint8_t ms1, ms2, ms3, ms4;
@@ -92,6 +105,7 @@ const byte maxStrParamLength = 32;
 ESP8266WebServer server(80);
 WiFiClient espClient;
 
+PubSubClient mqttClient(espClient);
 
 #ifdef USE_DHT
 DHT dht(pinDHT, DHT11);
@@ -104,6 +118,8 @@ uint32_t DHT_control;
 
 float tempC[NSenseMax];
 float tempC_now[NSenseMax];
+float tempC_mqtt[NSenseMax];
+float tdelta[NSenseMax];
 uint8_t error_read_ds_Max;//количество ошибок (подряд) при опросе
 uint16_t t_msec_get_ds;//интервал опроса датчиков, Мсек
 
@@ -161,6 +177,7 @@ const char configSign[4] = { '#', 'G', 'R', 'S' };
 
 bool Prg_swt1, Prg_swt2, Prg_swt3;
 bool prev_swt1, prev_swt2, prev_swt3;
+bool mqtt_swt1, mqtt_swt2, mqtt_swt3;
 
 uint8_t MixOnHour, MixOnMin, MixOnSec, MixOffHour, MixOffMin, MixOffSec, MixHour, MixMin, MixSec, TMixContr, NsenseMixContr;
 uint8_t Prg_TMixContr, Prg_NsenseMixContr;
@@ -313,8 +330,16 @@ bool readConfig()
   offset = readEEPROMString(offset, AccessPassword);
   offset = readEEPROMString(offset, NameProg);
 
+  offset = readEEPROMString(offset, mqttServer);
+  offset = readEEPROMString(offset, mqttUser);
+  offset = readEEPROMString(offset, mqttUserPassword);
+  offset = readEEPROMString(offset, mqttClientId);
+
   EEPROM.get(offset, ApMode); offset += sizeof(ApMode);
   EEPROM.get(offset, AccessMode); offset += sizeof(AccessMode);
+
+  EEPROM.get(offset, useMQTT); offset += sizeof(useMQTT);
+  EEPROM.get(offset, mqttServerPort); offset += sizeof(mqttServerPort);
 
   EEPROM.get(offset, ip1);       offset += sizeof(ip1);
   EEPROM.get(offset, ip2);       offset += sizeof(ip2);
@@ -353,8 +378,16 @@ void writeConfig()
   offset = writeEEPROMString(offset, AccessPassword);
   offset = writeEEPROMString(offset, NameProg);
 
+  offset = writeEEPROMString(offset, mqttServer);
+  offset = writeEEPROMString(offset, mqttUser);
+  offset = writeEEPROMString(offset, mqttUserPassword);
+  offset = writeEEPROMString(offset, mqttClientId);
+
   EEPROM.put(offset, ApMode); offset += sizeof(ApMode);
   EEPROM.put(offset, AccessMode); offset += sizeof(AccessMode);
+
+  EEPROM.put(offset, useMQTT); offset += sizeof(useMQTT);
+  EEPROM.put(offset, mqttServerPort); offset += sizeof(mqttServerPort);
 
   EEPROM.put(offset, ip1); offset += sizeof(ip1);
   EEPROM.put(offset, ip2); offset += sizeof(ip2);
@@ -463,6 +496,7 @@ bool setupWiFiAsStation() {
   lcd.print(WiFi.localIP());
   delay(2500);
 #endif
+
   return true;
 }
 //----------------------------------------------------------------
@@ -500,6 +534,86 @@ void setupWiFi() {
 #endif
 
   Serial.println(F("HTTP server started"));
+
+}
+//------------------------------------
+void connectMQTT() {
+  if ((!ApMode) && (WiFi.status() == WL_CONNECTED) && useMQTT && !mqttClient.connected())
+  {
+    for (uint8_t i=0; i<3; i++) {
+      Serial.println("Connecting to MQTT...");
+ 
+      if (mqttClient.connect(mqttClientId.c_str(), mqttUser.c_str(), mqttUserPassword.c_str() )) {
+ 
+        Serial.println("connected");  
+        mqttClient.subscribe(String(mqttClientId+"/switch/heater").c_str());
+        mqttClient.subscribe(String(mqttClientId+"/switch/mixer").c_str());
+        mqttClient.subscribe(String(mqttClientId+"/switch/valve").c_str());
+        mqttClient.subscribe(String(mqttClientId+"/switch/prg").c_str());
+
+        // Pull initial values
+        mqttClient.publish(String(mqttClientId+"/switch/heater").c_str(), String(mqtt_swt1).c_str(), true);
+        mqttClient.publish(String(mqttClientId+"/switch/mixer").c_str(), String(mqtt_swt2).c_str(), true);
+        mqttClient.publish(String(mqttClientId+"/switch/valve").c_str(), String(mqtt_swt3).c_str(), true);
+        mqttClient.publish(String(mqttClientId+"/prg").c_str(), String(Prg_mqtt).c_str(), true);
+
+        break;
+ 
+      } else {
+ 
+        Serial.print("failed with state ");
+        Serial.print(mqttClient.state()); 
+      }
+    }
+  }
+}
+//------------------------------------
+void mqttCallback(char* topic, byte* payload, unsigned int length) {
+  Serial.print("MQTT message arrived [");
+  Serial.print(topic);
+  Serial.print("] ");
+  for (int i = 0; i < length; i++) {
+    Serial.print((char)payload[i]);
+  }
+  Serial.println();
+
+  if (!Prg) {
+    if (String(topic).equals(mqttClientId+"/switch/heater")){
+       if ((char)payload[0] == '0') {
+          Prg_swt1 = LOW;
+          relay1Level = 0;
+       } else if ((char)payload[0] == '1') {
+          Prg_swt1 = HIGH;
+          relay1Level = 1;
+       }
+    }
+    if (String(topic).equals(mqttClientId+"/switch/mixer")){
+       if ((char)payload[0] == '0') {
+          Prg_swt2 = LOW;
+          relay2Level = 0;
+       } else if ((char)payload[0] == '1') {
+          Prg_swt2 = HIGH;
+          relay2Level = 1;
+       }      
+    }
+    if (String(topic).equals(mqttClientId+"/switch/valve")){
+       if ((char)payload[0] == '0') {
+          Prg_swt3 = LOW;
+          relay3Level = 0;
+       } else if ((char)payload[0] == '1') {
+          Prg_swt3 = HIGH;
+          relay3Level = 1;
+       }
+    }
+  }
+  /* Switch on the LED if an 1 was received as first character
+  if ((char)payload[0] == '1') {
+    digitalWrite(BUILTIN_LED, LOW);   // Turn the LED on (Note that LOW is the voltage level
+    // but actually the LED is on; this is because
+    // it is acive low on the ESP-01)
+  } else {
+    digitalWrite(BUILTIN_LED, HIGH);  // Turn the LED off by making the voltage HIGH
+  }*/
 
 }
 //------------------------------------
@@ -795,6 +909,7 @@ void openSensorConfFile()
                 insideThermometer[i][k] = root["frame"][k];
               }
               const char* tNameS = root["tNameSens"]; if (tNameS != noDef) tNameSens[i] = String(tNameS);
+              tdelta[i] = root["tdelta"];
             }
             else {
               Serial.println(F("..проблемы с парсингом"));
@@ -914,7 +1029,21 @@ void setup()
 
   setupWiFi();
 
-
+  // MQTT
+  Serial.println();
+  Serial.print(F("useMQTT="));
+  Serial.println(String(useMQTT));
+  if (useMQTT)
+  {
+    Serial.println();
+    Serial.print(F("Trying to connect MQTT... "));
+    Serial.print(mqttServer);
+    Serial.print(F(":"));
+    Serial.println(String(mqttServerPort));
+    mqttClient.setServer(mqttServer.c_str(), mqttServerPort);
+    mqttClient.setCallback(mqttCallback);
+  }
+  
   //-------------------------------------------------
 
   //  server.begin();
@@ -932,6 +1061,7 @@ void setup()
   server.on("/warm", h_warm);
   server.on("/reboot", h_reboot);
   server.on("/wifi", h_wifi);
+  server.on("/mqtt", h_mqtt);
   server.on("/otbor", h_otbor);
   server.on("/data_mainPage", HTTP_GET, h_data_mainPage);
   server.on("/open_file", HTTP_GET, h_prg_open_file);
@@ -1005,6 +1135,14 @@ void loop()
     nextTime = millis() + timeout;
   }
   server.handleClient();
+
+  if (useMQTT)
+  {
+    if (!mqttClient.connected()){
+      connectMQTT();
+    }
+    mqttClient.loop();
+  }
 
   t_sec = millis() / 1000;
   vol_hour = t_sec / 60 / 60;
@@ -1139,6 +1277,40 @@ void loop()
   working_Warm();
   working_Otbor();
   working_other();
+
+  // MQTT
+  if (useMQTT && mqttClient.connected())
+  {
+    for (uint8_t i = 0; i < NSenseMax; i++)  {
+
+        if ((t[i] == 1) && tempC[i] != tempC_mqtt[i])
+        {
+           tempC_mqtt[i] = tempC[i];
+           mqttClient.publish(String(mqttClientId+"/temp/"+String(i)).c_str(), String(tempC_mqtt[i]).c_str(), true);
+        }
+
+        if (mqtt_swt1 != Prg_swt1) {
+          mqtt_swt1 = Prg_swt1;
+          mqttClient.publish(String(mqttClientId+"/switch/heater").c_str(), String(mqtt_swt1).c_str(), true);
+        }
+
+        if (mqtt_swt2 != Prg_swt2) {
+          mqtt_swt2 = Prg_swt2;
+          mqttClient.publish(String(mqttClientId+"/switch/mixer").c_str(), String(mqtt_swt2).c_str(), true);
+        }
+
+        if (mqtt_swt3 != Prg_swt3) {
+          mqtt_swt3 = Prg_swt3;
+          mqttClient.publish(String(mqttClientId+"/switch/valve").c_str(), String(mqtt_swt3).c_str(), true);
+        }
+
+        if (Prg_mqtt != Prg) {
+          Prg_mqtt = Prg;
+          mqttClient.publish(String(mqttClientId+"/prg").c_str(), String(Prg_mqtt).c_str(), true);
+        }
+
+    }
+  }
 
 #ifdef USE_IRREMOTE
 

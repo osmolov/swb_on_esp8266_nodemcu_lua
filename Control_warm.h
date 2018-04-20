@@ -399,7 +399,7 @@ void working_Warm()
         }
         else {//датчик зашарился, проверяем показания
           error_read_ds[i] = 0;//обнуляем ошибки
-          tempC[i] = read_correct(tempC[i], tempC_now[i], i);
+          tempC[i] = read_correct(tempC[i], tempC_now[i], i) + tdelta[i];
         }
 
         if (Prg_Nsense == i) Tk_now = tempC[i];
