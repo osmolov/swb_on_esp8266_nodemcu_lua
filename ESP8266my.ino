@@ -1288,27 +1288,26 @@ void loop()
            tempC_mqtt[i] = tempC[i];
            mqttClient.publish(String(mqttClientId+"/temp/"+String(i)).c_str(), String(tempC_mqtt[i]).c_str(), true);
         }
+    }
 
-        if (mqtt_swt1 != Prg_swt1) {
-          mqtt_swt1 = Prg_swt1;
-          mqttClient.publish(String(mqttClientId+"/switch/heater").c_str(), String(mqtt_swt1).c_str(), true);
-        }
+    if (mqtt_swt1 != Prg_swt1) {
+       mqtt_swt1 = Prg_swt1;
+       mqttClient.publish(String(mqttClientId+"/switch/heater").c_str(), String(mqtt_swt1).c_str(), true);
+    }
 
-        if (mqtt_swt2 != Prg_swt2) {
-          mqtt_swt2 = Prg_swt2;
-          mqttClient.publish(String(mqttClientId+"/switch/mixer").c_str(), String(mqtt_swt2).c_str(), true);
-        }
+    if (mqtt_swt2 != Prg_swt2) {
+       mqtt_swt2 = Prg_swt2;
+       mqttClient.publish(String(mqttClientId+"/switch/mixer").c_str(), String(mqtt_swt2).c_str(), true);
+    }
 
-        if (mqtt_swt3 != Prg_swt3) {
-          mqtt_swt3 = Prg_swt3;
-          mqttClient.publish(String(mqttClientId+"/switch/valve").c_str(), String(mqtt_swt3).c_str(), true);
-        }
+    if (mqtt_swt3 != Prg_swt3) {
+       mqtt_swt3 = Prg_swt3;
+       mqttClient.publish(String(mqttClientId+"/switch/valve").c_str(), String(mqtt_swt3).c_str(), true);
+    }
 
-        if (Prg_mqtt != Prg) {
-          Prg_mqtt = Prg;
-          mqttClient.publish(String(mqttClientId+"/prg").c_str(), String(Prg_mqtt).c_str(), true);
-        }
-
+    if (Prg_mqtt != Prg) {
+       Prg_mqtt = Prg;
+       mqttClient.publish(String(mqttClientId+"/prg").c_str(), String(Prg_mqtt).c_str(), true);
     }
   }
 
