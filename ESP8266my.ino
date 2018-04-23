@@ -6,8 +6,8 @@
 
 const byte   D1_pin PROGMEM = D1;      //GPIO5
 //const byte swt1_pin PROGMEM = D5;      //GPIO14
-const byte swt1_pin PROGMEM = D4; //GPIO2 врем
-const byte swt2_pin PROGMEM = D0;      //GPIO16
+const byte swt1_pin PROGMEM = D0;      //GPIO16
+const byte swt2_pin PROGMEM = D5;      //GPIO14
 const byte swt3_pin PROGMEM = D2;      //GPIO4
 const byte RECV_PIN PROGMEM = D3;      //GPIO0
 const byte pinBuiltinLed PROGMEM = D4; //GPIO2
@@ -496,7 +496,6 @@ bool setupWiFiAsStation() {
   lcd.print(WiFi.localIP());
   delay(2500);
 #endif
-
   return true;
 }
 //----------------------------------------------------------------
@@ -892,7 +891,7 @@ void openSensorConfFile()
       Serial.println(F("..читаем файл"));
       String s;
       uint8_t st_start, st_end, st_len;
-      for (uint8_t i = 0; i < NSenseMax; i++)  {
+      for (uint8_t i = 0; i <= NSenseMax; i++)  {
         s = f.readStringUntil(PerevodStr); s.replace(F("\n"), "");
         st_start = s.indexOf(F("{")); st_end = s.indexOf(F("}")) + 1;
 #ifdef USE_LOG
@@ -941,32 +940,6 @@ void setup()
 {
   Serial.begin(115200);
   Serial.println();
-#ifdef USE_DHT
-  dht.begin();
-#endif
-
-#ifdef USE_IRREMOTE
-  irrecv.enableIRIn(); // Start the receiver
-#endif
-
-#ifdef USE_LCD
-
-  Wire.begin(pinSDA, pinSCL);
-  lcd.begin(pinSDA, pinSCL);
-  //lcd.init();
-  lcd.backlight();// Включаем подсветку дисплея
-  lcd.setCursor(1, 0);
-  lcd.print(F("www.simple-"));
-  lcd.setCursor(2, 1);
-  lcd.print(F("automation.ru"));
-  delay(3000);
-#endif
-
-
-
-
-
-
 
 
   chGrad = (char)49840; stGrad = chGrad; stGrad = stGrad + F("C");
@@ -1045,9 +1018,7 @@ void setup()
   }
   
   //-------------------------------------------------
-
   //  server.begin();
-
   server.on("/", handleRoot);
   server.on("/index.html", handleRoot);
   server.on("/switch", h_switch);
@@ -1102,6 +1073,28 @@ void setup()
   openSettingsFile();
   openTempMessFile();
   openSensorConfFile();
+
+
+#ifdef USE_DHT
+  dht.begin();
+#endif
+
+#ifdef USE_IRREMOTE
+  irrecv.enableIRIn(); // Start the receiver
+#endif
+
+#ifdef USE_LCD
+
+  Wire.begin(pinSDA, pinSCL);
+  lcd.begin(pinSDA, pinSCL);
+  //lcd.init();
+  lcd.backlight();// Включаем подсветку дисплея
+  lcd.setCursor(1, 0);
+  lcd.print(F("www.simple-"));
+  lcd.setCursor(2, 1);
+  lcd.print(F("automation.ru"));
+  delay(3000);
+#endif
 
   t_ik = millis();
   myPID.SetSampleTime(1000);
