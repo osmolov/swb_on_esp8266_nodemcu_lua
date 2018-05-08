@@ -31,7 +31,7 @@ void h_warm()
   message += F("if (isNaN(ret)==true) document.getElementById(obj).value=0;");
   message += F("if (isNaN(ret)==false) document.getElementById(obj).value=ret;}");
   message += refreshTempMessage("warm");
-  
+
   message += F("function filStTimer(){\n");
   message +=   F("var request = new XMLHttpRequest();\n");
   message +=   F("request.open('GET', '/data_settimer', true);\n");
@@ -77,7 +77,7 @@ void h_warm()
   message += String(TkVol) + F("\" onchange=\"CheckVal('TkVol')\" style=\"text-align: center; width: 45px\" />");
   message += F("<input id=\"ButTkPlust\" type=\"button\" value=\"+\" onclick=\"document.getElementById('TkVol').value=PowChange(document.getElementById('TkVol').value,1)\" /> Температура,С<br />");
   message += F("<br />");
-  
+
   message += F("<fieldset style=\"width: 304px\">");
   //message += F("&nbsp;<fieldset style=\"width: 304px\">");
   message += F("<legend><b>Вариант управления ТЭНом</b></legend>");
@@ -366,12 +366,12 @@ void working_Warm()
 
   t_prom = millis() / 1000; //текущее время
   uint32_t t_control_now = millis();
-  
-  if (t_msec_get_ds==0) t_msec_get_ds=2000;
-  if (error_read_ds_Max==0) error_read_ds_Max=5;
-  if (jamp_t==0) jamp_t=10;
-  if (Zaderj==0) Zaderj=10;
-  
+
+  if (t_msec_get_ds == 0) t_msec_get_ds = 2000;
+  if (error_read_ds_Max == 0) error_read_ds_Max = 5;
+  if (jamp_t == 0) jamp_t = 10;
+  if (Zaderj == 0) Zaderj = 10;
+
 
   if (((t_control_now - t_control ) >= t_msec_get_ds) || (t_control_now < t_msec_get_ds))
   { //выполняем замер
@@ -400,14 +400,32 @@ void working_Warm()
         else {//датчик зашарился, проверяем показания
           error_read_ds[i] = 0;//обнуляем ошибки
           tempC[i] = read_correct(tempC[i], tempC_now[i], i);
+          // корректируем показания
+          tempC_KX[i]=tempC[i];//до коррекции
+          tempC[i]=tempC[i]+(tempC[i]*tdK[i]/100)+tdX[i];//после коррекции
+          
         }
+        
 
+        
         if (Prg_Nsense == i) Tk_now = tempC[i];
         if (Prg_NsenseWarmContr == i) TWarmContr_now = tempC[i];
 
       }
     }
     t_control = t_control_now;
+
+    if (useMQTT && mqttClient.connected()) {
+      for (uint8_t i = 0; i < NSenseMax; i++)  {
+        if ((t[i] == 1) && tempC[i] != tempC_mqtt[i]) {
+          tempC_mqtt[i] = tempC[i];
+          mqttClient.publish(("temp/t" + String(i)).c_str(), String(tempC_mqtt[i]).c_str(), true);
+          //Serial.println("temp/t" + String(i));
+        }
+      }
+    }
+
+
   }
 
 
@@ -416,8 +434,10 @@ void working_Warm()
     if (prev_swt1 != Prg_swt1)
     {
       prev_swt1 = Prg_swt1;
+      mqttClient.publish(String("swt/1").c_str(), String(Prg_swt1).c_str(), true);
       if (Prg == true)
       {
+        
         if (Prog[NumStrPrg].statErr == 0)
         {
           t_warm = t_prom; //засекаем время вкл нагрева
@@ -442,6 +462,7 @@ void working_Warm()
     if (prev_swt1 != Prg_swt1)
     {
       prev_swt1 = Prg_swt1;
+      mqttClient.publish(String("swt/1").c_str(), String(Prg_swt1).c_str(), true);
     }
 
   }

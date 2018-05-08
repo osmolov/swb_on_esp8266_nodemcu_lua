@@ -1,80 +1,42 @@
+//------------------------------------------------------------------------------------------------------------------------------------
+//управление ПВК v.2.5 (добавлено: восстановление состояний реле, MQTT, коррекция температуры мультипликативная, аддитивная)
+//основной канал автора на ютубе  "НеОбзор58"            https://www.youtube.com/channel/UC6mMZ4GGXMdpSGEy-j1EnxQ
+//второй   канал автора на ютубе  "Доступная автоматика" https://www.youtube.com/channel/UCxfwRP66zE4zwn6lgvS6wQg
+//сайт и страница проекта                                http://www.simple-automation.ru/publ/proekty/kontroller_dlja_pvk_na_baze_esp8266_nodemcu/kontroller-dlja-pvk-na-baze-esp8266-nodemcu-lua/15-1-0-10
+//
+//     желающим поддержать автора: карта Сбера 676280489001157828 получатель Григорий Валерьевич Ц.
+//
+//------------------------------------------------------------------------------------------------------------------------------------
+
 //#define USE_LOG
 //#define USE_LCD
-//#define USE_DHT
-
 //#define USE_IRREMOTE
 
+//----------общие переменные и константы----------------------------------------------------------------------------------------------
+//назначаем пины
 const byte   D1_pin PROGMEM = D1;      //GPIO5
-//const byte swt1_pin PROGMEM = D5;      //GPIO14
-const byte swt1_pin PROGMEM = D0;      //GPIO16
-const byte swt2_pin PROGMEM = D5;      //GPIO14
+const byte swt1_pin PROGMEM = D0;
+const byte swt2_pin PROGMEM = D5;      //GPIO16
 const byte swt3_pin PROGMEM = D2;      //GPIO4
 const byte RECV_PIN PROGMEM = D3;      //GPIO0
 const byte pinBuiltinLed PROGMEM = D4; //GPIO2
-//const byte pinDHT PROGMEM = D6;
-const byte pinDHT PROGMEM = D7;
 const byte pinSDA PROGMEM = D5;
 const byte pinSCL PROGMEM = D6;
 
-extern "C" {
-#include <sntp.h>
-}
-#include "Date.h";
+//имена файлов настроек
+const String SensorConfFile = "sensor.cfg";
+const String NameMsgFile = "message.cfg";
+const String NameSettingsFile = "settings.cfg";
+const String NameResumeStateFile = "resumeState.cfg";
 
+//----------работа с wi-fi файловой системой EEPROM-----------------------------------------------------------------------------------
+#include <FS.h>
+#include <ArduinoJson.h>
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
 #include <ESP8266mDNS.h>
-#include <OneWire.h>
-#include <DallasTemperature.h>
 #include <EEPROM.h>
-
-#include <FS.h>
-#include <ArduinoJson.h>
-#include <PID_v1.h>
-
-#ifdef USE_LCD
-#include <Wire.h>
-#include <LiquidCrystal_I2C.h>
-LiquidCrystal_I2C lcd(0x3F, 16, 2); // Устанавливаем дисплей (0x3F)
-uint32_t LCD_control;
-#endif
-
-#ifdef USE_DHT
-#include <DHT.h>
-#endif
-
-#ifdef USE_IRREMOTE
-#include <IRremoteESP8266.h>
-#include <IRutils.h>
-#include <IRrecv.h>
-IRrecv irrecv(RECV_PIN);
-decode_results results;
-#endif
-
-#define ONE_WIRE_BUS D1
-#define TEMPERATURE_PRECISION 9
-OneWire oneWire(ONE_WIRE_BUS);
-DallasTemperature sensors(&oneWire);
-
-const char* const ssidAP PROGMEM = "ESP_Control";
-const char* const passwordAP PROGMEM = "Pa$$w0rd";
-const uint8_t NSenseMax = 6;
-uint8_t NSenseFact;
-byte insideThermometer[NSenseMax][8];
-//-----------------------------------------PID переменные---------------------
-//bool OnPid;
-double Setpoint, Input, Output;
-float gap;
-// Определяем агрессивные и консервативные параметры PID управления
-//float aggKp = 4, aggKi = 0.2, aggKd = 1;
-//float consKp = 1, consKi = 0.05, consKd = 0.25;
-double aggKp, aggKi, aggKd;
-double consKp, consKi, consKd;
-// Определяем начальные параметры согласно библиотеке
-PID myPID(&Input, &Output, &Setpoint, consKp, consKi, consKd, DIRECT);
-//----------------------------------------------------------------------------
-
-bool Prg, Prg_accomp;
+ESP8266WebServer server(80);
 bool ApMode, AccessMode;
 String AccessLogin, AccessPassword;
 String ssid, password, domain;
@@ -82,64 +44,85 @@ uint8_t ip1, ip2, ip3, ip4;
 uint8_t ms1, ms2, ms3, ms4;
 uint8_t gt1, gt2, gt3, gt4;
 uint8_t dn1, dn2, dn3, dn4;
+byte arduino_mac[] = { 0xDE, 0xED, 0xBA, 0xFE, 0xFE, 0xED };
+
+const char* const ssidAP PROGMEM = "ESP_Control";
+const char* const passwordAP PROGMEM = "Pa$$w0rd";
+
+const char configSign[4] = { '#', 'G', 'R', 'S' };
+const byte maxStrParamLength = 32;
+
+char PerevodStr = 0x0D;
+char VozvrStr = 0x0A;
+
+//----MQTT----------------------------------------------------------------------------------------------------------------
+//1. бесплатный mqtt сервер после регистрации www.cloudmqtt.com
+//2. после регистрации нужно добавить двух пользователей, одного для есп, дрогого для телеф
+//3. клиент для андроид в гугл плей (IoT MQTT Dashboard) https://play.google.com/store/apps/details?id=com.thn.iotmqttdashboard&hl=ru
+//4. клиенту нужно разрешить/подписать на temp/# (temp/t0, temp/t1....) и добавить значения в subscribe
+//5. клиенту нужно разрешить/подписать на swt/# (swt/0, swt/1,swt/3) и добавить движки в publish
+
+#include <PubSubClient.h>// MQTT library
+WiFiClient espClient;
+PubSubClient mqttClient(espClient);
+bool useMQTT;
+String mqttServer, mqttUser, mqttUserPassword, mqttClientId;
+uint16_t mqttServerPort;
+
+//-----------датчики температуры------------------------------------------------------------------------------------------
+#include <OneWire.h>
+#include <DallasTemperature.h>
+#define ONE_WIRE_BUS D1
+#define TEMPERATURE_PRECISION 9
+OneWire oneWire(ONE_WIRE_BUS);
+DallasTemperature sensors(&oneWire);
 
 char chGrad;
 String stGrad;
+const uint8_t NSenseMax = 6;
+uint8_t NSenseFact;
+byte insideThermometer[NSenseMax][8];
 
-byte arduino_mac[] = { 0xDE, 0xED, 0xBA, 0xFE, 0xFE, 0xED };
-const byte maxStrParamLength = 32;
-
-ESP8266WebServer server(80);
-WiFiClient espClient;
-
-
-#ifdef USE_DHT
-DHT dht(pinDHT, DHT11);
-uint32_t DHT_control;
-
-
-#endif
-
-
-
-float tempC[NSenseMax];
+float tempC[NSenseMax], tempC_mqtt[NSenseMax], tempC_KX[NSenseMax];
 float tempC_now[NSenseMax];
+int8_t t[NSenseMax];//используется датчик или нет
+String tNameSens[NSenseMax];//имя датчика
+float tdK[NSenseMax];//мультипликативная составляющая%
+float tdX[NSenseMax];//аддитивная составляющая в градусах
+
 uint8_t error_read_ds_Max;//количество ошибок (подряд) при опросе
+uint16_t error_read_ds[NSenseMax], error_read_ds_all, error_read_correct_ds[NSenseMax], error_read_correct_ds_all;
 uint16_t t_msec_get_ds;//интервал опроса датчиков, Мсек
-
-
-uint32_t t_ik;//присваивается значения от millis()
-
-float TkVol, Prg_TkVol, Tk_now;
 uint8_t Zaderj, jamp_t;//задержка в опросе датчиков 0-50 мсек, и скор из температуры за опрос 0-20 град
+
+//сообщения о достижении температуры
+const int8_t NomMessMax = 20;
+int8_t NomMessAll;
+struct str_mesTemp {
+  uint8_t NsenseM;// номер датчика сигнала
+  float     TempM;// температура сигнала
+  String  WavFile;// звук.сообщение
+  String  Message;// сообщение
+  bool       Need;// использовать да/нет
+  bool    accompl;// сработало да/нет
+};
+str_mesTemp mesTemp[NomMessMax];
+
+//------------нагрев-------------------------------------------------------------------------------------------------------
+#include <PID_v1.h>
+float TkVol, Prg_TkVol, Tk_now;
 uint8_t ModeWarm, Prg_ModeWarm; //режим нагрева 1-3
 uint8_t Nsense, Prg_Nsense; //номер датчика для регулировки нагрева
 uint8_t WarmVol, Prg_WarmVol; //0-100%
 uint32_t Prg_WarmTime, OldWarmWorkTime;
 uint8_t  WarmHour, WarmMin, WarmSec;
 uint32_t t_control_now, t_control;
-
-int8_t NsenseOtbContr, Prg_NsenseOtbContr;
-uint32_t t_otb, t_work_otb, t_pwm_on_otb , t_pwm_off_otb;
-float TstOtb, TendOtb, Prg_TstOtb, Prg_TendOtb, Tk_otb;
-String strtworkotb;
-uint8_t PercOtb;
-uint8_t TimeOtbPeriod;
-
-uint32_t t_work_mix, t_mix, t_pow_on, t_pow_off;
-
-String TimeOn, strtworkmix;
-float TMixContr_now;
-
 uint32_t t_work_warm, t_work_warm_ModeWarm, reachT, t_warm, t_pwm_on, t_pwm_off;
 String strtworkwarm;
 int8_t TSec;//период PWM в сек 0-255
 int8_t erSt;//ошибки от 0-10
 int8_t power_ten;
 bool StatusWarm;
-
-int8_t t[NSenseMax];
-String tNameSens[NSenseMax];
 
 float TWarmContr, Prg_TWarmContr, TWarmContr_now;
 int8_t NsenseWarmContr, Prg_NsenseWarmContr;
@@ -152,16 +135,29 @@ bool TimerWarmAvailEnd;
 int8_t TimerWarmDayEnd, TimerWarmMonthEnd, TimerWarmHourEnd, TimerWarmMinEnd, TimerWarmSecEnd;
 int16_t TimerWarmYearEnd;
 uint32_t TimerWarmEndUnx;
+//PID
+double Setpoint, Input, Output;
+float gap;
+// Определяем агрессивные и консервативные параметры PID управления
+//float aggKp = 4, aggKi = 0.2, aggKd = 1;
+//float consKp = 1, consKi = 0.05, consKd = 0.25;
+double aggKp, aggKi, aggKd;
+double consKp, consKi, consKd;
+// Определяем начальные параметры согласно библиотеке
+PID myPID(&Input, &Output, &Setpoint, consKp, consKi, consKd, DIRECT);
 
+//-----------отбор---------------------------------------------------------------------------------------------------------
+int8_t NsenseOtbContr, Prg_NsenseOtbContr;
+uint32_t t_otb, t_work_otb, t_pwm_on_otb , t_pwm_off_otb;
+float TstOtb, TendOtb, Prg_TstOtb, Prg_TendOtb, Tk_otb;
+String strtworkotb;
+uint8_t PercOtb;
+uint8_t TimeOtbPeriod;
 
-
-bool relay1Level, relay2Level, relay3Level;
-//---------------------------------------------------
-const char configSign[4] = { '#', 'G', 'R', 'S' };
-
-bool Prg_swt1, Prg_swt2, Prg_swt3;
-bool prev_swt1, prev_swt2, prev_swt3;
-
+//----------миксер---------------------------------------------------------------------------------------------------------
+uint32_t t_work_mix, t_mix, t_pow_on, t_pow_off;
+String TimeOn, strtworkmix;
+float TMixContr_now;
 uint8_t MixOnHour, MixOnMin, MixOnSec, MixOffHour, MixOffMin, MixOffSec, MixHour, MixMin, MixSec, TMixContr, NsenseMixContr;
 uint8_t Prg_TMixContr, Prg_NsenseMixContr;
 uint32_t Prg_MixWorkTime, Prg_MixStopTime, Prg_MixTime;
@@ -188,32 +184,19 @@ int8_t TimerMixDayEnd, TimerMixMonthEnd, TimerMixHourEnd, TimerMixMinEnd, TimerM
 int16_t TimerMixYearEnd;
 uint32_t TimerMixEndUnx;
 
-uint16_t error_read_ds[NSenseMax], error_read_ds_all, error_read_correct_ds[NSenseMax], error_read_correct_ds_all;
+//----------управление реле--------------------------------------------------------------------------------------------------
+bool autoMode;
+bool relay1Level, relay2Level, relay3Level;
+bool Prg_swt1, Prg_swt2, Prg_swt3;
+bool prev_swt1, prev_swt2, prev_swt3;
+bool resumeState;
 
-//const char* const NameProgArg PROGMEM = "NameProg";
-char PerevodStr = 0x0D;
-char VozvrStr = 0x0A;
+//--------программный режим----------------------------------------------------------
+bool Prg, Prg_accomp;
 uint8_t NumStrPrgAll;
 uint8_t NumStrPrg, PrevNumStrPrg;
-String NameProg;//, filePrg[31], fileStrData[27];
+String NameProg;
 int8_t KeyPress;
-
-const String SensorConfFile = "sensor.cfg";
-const String NameMsgFile = "message.cfg";
-const String NameSettingsFile = "settings.cfg";
-const int8_t NomMessMax = 20;
-int8_t NomMessAll;
-
-struct str_mesTemp {
-  uint8_t NsenseM;// номер датчика сигнала
-  float     TempM;// температура сигнала
-  String  WavFile;// звук.сообщение
-  String  Message;// сообщение
-  bool       Need;// использовать да/нет
-  bool    accompl;// сработало да/нет
-};
-str_mesTemp mesTemp[NomMessMax];
-
 
 struct stepProgr
 {
@@ -254,6 +237,12 @@ const int8_t NumStrPrgMax = 30;
 
 stepProgr Prog[NumStrPrgMax];
 
+//------------работа со временем--------------------------------------------------------------
+extern "C" {
+#include <sntp.h>
+}
+#include "Date.h";
+
 uint32_t startTime, startMs, nextTime;
 String ntpServer1, ntpServer2, ntpServer3;
 uint32_t updateInterval;
@@ -265,13 +254,29 @@ const int8_t defTimeZone = 3; // GMT+3 Moscow TZ
 String timeStr;
 const uint32_t noTime = (uint32_t)0;
 const char* const noDef = '\0';
-//-----------------------------
+
 bool ntpUpd;
 int8_t now_hour, now_min, now_sec, now_day, now_month;
 uint8_t now_wd;
 int16_t now_year;
-
 uint32_t now_timeUnx;
+
+//------используемые устройства--------------------------------------------------
+#ifdef USE_LCD
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+LiquidCrystal_I2C lcd(0x3F, 16, 2); // Устанавливаем дисплей (0x27)
+uint32_t LCD_control;
+#endif
+
+#ifdef USE_IRREMOTE
+#include <IRremoteESP8266.h>
+#include <IRutils.h>
+#include <IRrecv.h>
+IRrecv irrecv(RECV_PIN);
+decode_results results;
+uint32_t t_ik;//присваивается значения от millis()
+#endif
 
 //-------------------------------------------------------------------------------------------------------------------------------------------
 void MydigitalWrite(int pin, bool state)
@@ -301,8 +306,7 @@ bool readConfig()
 {
   uint16_t offset = 0;
   Serial.println(F("Reading config from EEPROM"));
-  for (byte i = 0; i < sizeof(configSign); i++)
-  {
+  for (byte i = 0; i < sizeof(configSign); i++)  {
     if (EEPROM.read(offset + i) != configSign[i])
       return false;
   }
@@ -407,8 +411,6 @@ bool setupWiFiAsStation() {
   const uint32_t timeout = 40000;
   uint32_t maxtime = millis() + timeout;
 
-
-
   WiFi.mode(WIFI_STA);
 
   if (ssid.length() == 0) return false;
@@ -463,6 +465,9 @@ bool setupWiFiAsStation() {
   lcd.print(WiFi.localIP());
   delay(2500);
 #endif
+
+
+
   return true;
 }
 //----------------------------------------------------------------
@@ -498,8 +503,8 @@ void setupWiFi() {
   lcd.print(F("HTTP started    "));
   delay(2000);
 #endif
+  Serial.println(F("HTTP started"));
 
-  Serial.println(F("HTTP server started"));
 
 }
 //------------------------------------
@@ -561,7 +566,7 @@ void openSettingsFile () {
 #ifdef USE_LOG
             Serial.println(s);
 #endif
-            StaticJsonBuffer<1200> jsonBuffer;   //Memory pool
+            DynamicJsonBuffer jsonBuffer;   //Memory pool
             JsonObject& root = jsonBuffer.parseObject(s);
             if (root.success()) {
               int8_t hh, mm, ss;
@@ -644,6 +649,7 @@ void openSettingsFile () {
               }
               else if (root["Vol"] == 3) {
                 //Serial.println("Vol3");
+                resumeState = root["resumeState"];
                 relay1Level = root["relayLevel"][0];
                 relay2Level = root["relayLevel"][1];
                 relay3Level = root["relayLevel"][2];
@@ -653,6 +659,15 @@ void openSettingsFile () {
                 updateInterval = root["updateInterval"];
                 timeZone = root["timeZone"];
                 ntpUpd = root["ntpUpd"];
+
+                useMQTT = root["useMQTT"];
+                const char* mqttS = root["mqttServer"]; if (mqttS != noDef) mqttServer = String(mqttS);
+                mqttServerPort = root["mqttServerPort"];
+
+                const char* mqttU = root["mqttUser"]; if (mqttU != noDef) mqttUser = String(mqttU);
+                const char* mqttUP = root["mqttUserPassword"]; if (mqttUP != noDef) mqttUserPassword = String(mqttUP);
+                const char* mqttC = root["mqttClientId"]; if (mqttC != noDef) mqttClientId = String(mqttC);
+
 
                 Zaderj = root["Zaderj"];
                 jamp_t = root["jamp_t"];
@@ -674,7 +689,7 @@ void openSettingsFile () {
           lcd.setCursor(6, 0);
           lcd.print("ok");
           delay(1500);
-          
+
 #endif
           break;
         }
@@ -719,7 +734,7 @@ void openTempMessFile() {
         if (s.indexOf(F("END")) == -1) {
           if ((st_start != -1) && (st_end != -1)) {
             s = s.substring(st_start, st_end); st_len = s.length();
-            StaticJsonBuffer<300> jsonBuffer;   //Memory pool
+            DynamicJsonBuffer jsonBuffer;   //Memory pool
             JsonObject& root = jsonBuffer.parseObject(s);
             if (root.success()) {
               mesTemp[i].Need = root["Need"];
@@ -727,6 +742,8 @@ void openTempMessFile() {
               mesTemp[i].TempM = root["TempM"];
               const char* WavFile = root["WavFile"]; if (WavFile != noDef) mesTemp[i].WavFile = String(WavFile);
               const char* Message = root["Message"]; if (Message != noDef) mesTemp[i].Message = String(Message);
+
+
             } else {
               Serial.println(F("..проблемы с парсингом"));
             }
@@ -737,7 +754,7 @@ void openTempMessFile() {
           NomMessAll = i;
           Serial.println(F("..дошли до конца файла"));
 #ifdef USE_LCD
-          lcd.setCursor(6,0);
+          lcd.setCursor(6, 0);
           lcd.print(F("ok"));
           delay(1500);
 #endif
@@ -778,7 +795,7 @@ void openSensorConfFile()
       Serial.println(F("..читаем файл"));
       String s;
       uint8_t st_start, st_end, st_len;
-      for (uint8_t i = 0; i <= NSenseMax; i++)  {
+      for (uint8_t i = 0; i < NSenseMax; i++)  {
         s = f.readStringUntil(PerevodStr); s.replace(F("\n"), "");
         st_start = s.indexOf(F("{")); st_end = s.indexOf(F("}")) + 1;
 #ifdef USE_LOG
@@ -787,7 +804,7 @@ void openSensorConfFile()
         if (s.indexOf(F("END")) == -1) {
           if ((st_start != -1) && (st_end != -1)) {
             s = s.substring(st_start, st_end); st_len = s.length();
-            StaticJsonBuffer<500> jsonBuffer;   //Memory pool
+            DynamicJsonBuffer jsonBuffer;   //Memory pool
             JsonObject& root = jsonBuffer.parseObject(s);
             if (root.success()) {
               t[i] = root["t"];
@@ -795,6 +812,8 @@ void openSensorConfFile()
                 insideThermometer[i][k] = root["frame"][k];
               }
               const char* tNameS = root["tNameSens"]; if (tNameS != noDef) tNameSens[i] = String(tNameS);
+              tdK[i] = root["tdK"];
+              tdX[i] = root["tdX"];
             }
             else {
               Serial.println(F("..проблемы с парсингом"));
@@ -822,19 +841,94 @@ void openSensorConfFile()
   }
 }
 //------------------------------------------------------
+//------------------------------------------------------
+void openResumeStateFile()
+{
+  if (resumeState == 1) {
+
+    if (!SPIFFS.exists("/" + NameResumeStateFile))
+    { //файл настроек не существует
+    }
+    else {
+      Serial.println(F("Открываем ")); Serial.println(NameResumeStateFile);
+      File f = SPIFFS.open("/" + NameResumeStateFile, "r");
+      if (!f) {
+        Serial.println(F("..не получилось открыть файл"));
+      }
+      else {
+        Serial.println(F("..читаем файл"));
+        String s;
+        uint8_t st_start, st_end, st_len;
+        for (uint8_t i = 0; i < 20; i++)  {
+          s = f.readStringUntil(PerevodStr); s.replace(F("\n"), "");
+          st_start = s.indexOf(F("{")); st_end = s.indexOf(F("}")) + 1;
+#ifdef USE_LOG
+          Serial.println(s);
+#endif
+          if (s.indexOf(F("END")) == -1) {
+            if ((st_start != -1) && (st_end != -1)) {
+              s = s.substring(st_start, st_end); st_len = s.length();
+              DynamicJsonBuffer jsonBuffer;   //Memory pool
+              JsonObject& root = jsonBuffer.parseObject(s);
+              if (root.success()) {
+                autoMode = root["autoMode"];
+                Prg_swt1 = root["rele1"];
+                Prg_swt2 = root["rele2"];
+                Prg_swt3 = root["rele3"];
+
+              }
+              else {
+                Serial.println(F("..проблемы с парсингом"));
+              }
+            }
+            else {
+              Serial.println(F("..не форматная строка"));
+            }
+          }
+          else { //нашли слово END в конце файла
+
+            Serial.println(F("..дошли до конца файла"));
+            Serial.println(F("..состояние реле восстановлено"));
+            break;
+          }
+        }
+        f.close();
+
+      }
+    }
+  }
+}
+//-----------------------------------------------------------------------------------------
+
 void setup()
 {
   Serial.begin(115200);
   Serial.println();
 
+#ifdef USE_IRREMOTE
+  irrecv.enableIRIn(); // Start the receiver
+#endif
+
+#ifdef USE_LCD
+  Wire.begin(pinSDA, pinSCL);
+  lcd.begin(pinSDA, pinSCL);
+  //lcd.init();
+  lcd.backlight();// Включаем подсветку дисплея
+  lcd.setCursor(1, 0);
+  lcd.print(F("www.simple-"));
+  lcd.setCursor(2, 1);
+  lcd.print(F("automation.ru"));
+  delay(3000);
+#endif
 
   chGrad = (char)49840; stGrad = chGrad; stGrad = stGrad + F("C");
 
+
   pinMode(pinBuiltinLed, OUTPUT);
   pinMode(swt1_pin, OUTPUT);  //digitalWrite(swt1_pin, !LOW);
-
   pinMode(swt2_pin, OUTPUT);  //digitalWrite(swt2_pin, !LOW);
   pinMode(swt3_pin, OUTPUT);  //digitalWrite(swt3_pin, !LOW);
+
   prev_swt1 = LOW;
   prev_swt2 = LOW;
   prev_swt3 = LOW;
@@ -890,7 +984,9 @@ void setup()
 
 
   //-------------------------------------------------
+
   //  server.begin();
+
   server.on("/", handleRoot);
   server.on("/index.html", handleRoot);
   server.on("/switch", h_switch);
@@ -899,11 +995,12 @@ void setup()
   server.on("/mixer", h_mixer);
   server.on("/save", h_save);
   server.on("/save_m", h_save_m);
-  //server.on("/save_sens", h_save_sens);
+  server.on("/save_kor", h_save_kor);
 
   server.on("/warm", h_warm);
   server.on("/reboot", h_reboot);
   server.on("/wifi", h_wifi);
+  server.on("/mqtt", h_mqtt);
   server.on("/otbor", h_otbor);
   server.on("/data_mainPage", HTTP_GET, h_data_mainPage);
   server.on("/open_file", HTTP_GET, h_prg_open_file);
@@ -944,30 +1041,11 @@ void setup()
   openSettingsFile();
   openTempMessFile();
   openSensorConfFile();
-
-
-#ifdef USE_DHT
-  dht.begin();
-#endif
+  openResumeStateFile();
 
 #ifdef USE_IRREMOTE
-  irrecv.enableIRIn(); // Start the receiver
-#endif
-
-#ifdef USE_LCD
-
-  Wire.begin(pinSDA, pinSCL);
-  lcd.begin(pinSDA, pinSCL);
-  //lcd.init();
-  lcd.backlight();// Включаем подсветку дисплея
-  lcd.setCursor(1, 0);
-  lcd.print(F("www.simple-"));
-  lcd.setCursor(2, 1);
-  lcd.print(F("automation.ru"));
-  delay(3000);
-#endif
-
   t_ik = millis();
+#endif
   myPID.SetSampleTime(1000);
   myPID.SetOutputLimits(0, 100);
   myPID.SetMode(AUTOMATIC);
@@ -990,8 +1068,9 @@ void setup()
 
 void loop()
 {
-  const uint32_t timeout = 300000; // 5 min.
+  const uint32_t timeout = 180000; // 3 min.
   static uint32_t nextTime = timeout;
+  static uint32_t nextTimeMQTT = timeout;
   uint32_t t_sec, vol_hour, vol_min, vol_sec;
 
   if ((!ApMode) && (WiFi.status() != WL_CONNECTED) && ((WiFi.getMode() == WIFI_STA) || ((int32_t)(millis() - nextTime) >= 0)))  {
@@ -999,6 +1078,7 @@ void loop()
     nextTime = millis() + timeout;
   }
   server.handleClient();
+
 
   t_sec = millis() / 1000;
   vol_hour = t_sec / 60 / 60;
@@ -1187,6 +1267,37 @@ void loop()
   now_timeUnx = startTime + (millis() - startMs) / 1000;
   parseUnixTime(now_timeUnx, now_hour, now_min, now_sec, now_wd, now_day, now_month, now_year);
   timeStr = dateWdTimeToStr(now_timeUnx);
+
+
+
+  if ((!ApMode) && (WiFi.status() == WL_CONNECTED) && useMQTT && !mqttClient.connected()) {
+    if (((int32_t)(millis() - nextTimeMQTT) >= 0) || (nextTimeMQTT == timeout))  {
+      nextTimeMQTT = millis() + timeout;
+      Serial.println();
+      Serial.print(F("Trying to connect MQTT... "));
+      Serial.print(mqttServer);
+      Serial.print(F(":"));
+      Serial.println(String(mqttServerPort));
+      mqttClient.setServer(mqttServer.c_str(), mqttServerPort);
+      mqttClient.setCallback(mqttCallback);
+
+      for (uint8_t i = 0; i < 3; i++) {
+        Serial.println("..Connecting to MQTT...");
+        if (mqttClient.connect(mqttClientId.c_str(), mqttUser.c_str(), mqttUserPassword.c_str())) {
+          //mqttClient.subscribe("text/#");
+          mqttClient.subscribe("swt/#");
+          Serial.println("connected");
+          break;
+
+        } else {
+          Serial.print("failed with state ");
+          Serial.println(mqttClient.state());
+        }
+      }
+    }
+  }
+
+  if (useMQTT) mqttClient.loop();
 
 }
 //--------------------------------------------------------------------------------------

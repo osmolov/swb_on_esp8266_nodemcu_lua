@@ -19,18 +19,33 @@ void h_switch()//switch
         //PID myPID(&Input, &Output, &Setpoint, consKp, consKi, consKd, DIRECT);
         Input = 100;
         Setpoint = 100;
+        if (resumeState == 1) {
+          save_ResumeStateFile();
+        }
       }
       else Prg_swt1 = LOW;
     }
     else if (argName == F("swt2")) {
       if (argValue == F("true")) Prg_swt2 = HIGH;
       else Prg_swt2 = LOW;
+      if (resumeState == 1) {
+        save_ResumeStateFile();
+      }
     }
     else if (argName == F("swt3")) {
       if (argValue == F("true")) Prg_swt3 = HIGH;
       else Prg_swt3 = LOW;
+      if (resumeState == 1) {
+        save_ResumeStateFile();
+      }
     }
+    else if (argName == F("resumeState")) {
+      if (argValue == F("true")) {
+        resumeState = HIGH; save_ResumeStateFile();
+      }
+      else resumeState = LOW;
 
+    }
     else if (argName == F("relay1Level")) {
       if (argValue == F("true")) relay1Level = 1;
       else relay1Level = 0;
@@ -71,6 +86,11 @@ void h_switch()//switch
       if (argValue == F("true")) AccessMode  = 1;
       else AccessMode = 0;
     }
+    else if (argName == F("useMQTT")) {
+      if (argValue == F("true")) useMQTT  = 1;
+      else useMQTT = 0;
+    }
+
     else if (argName == F("Prg_Save")) {
       /*if (NumStrPrgAll > 2) {
         Serial.println("Try open " + NameProg);

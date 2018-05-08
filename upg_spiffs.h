@@ -595,7 +595,177 @@ void h_wifi()//wifi
 
   server.send(200, F("text/html"), message);
 }
+//----------------------------------------------------------------------------------------
+void h_mqtt()//mqtt
+{
+  LoginContr();
+  String message = F("<!DOCTYPE html>\n");
+  message += F("<html>\n");
+  message += F("<head>\n");
+  message += F("<title>Настройка MQTT</title>\n");
+  message += F("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n");
+  message += F("<meta charset=\"utf-8\">\n");
+  message += F("<style type=\"text/css\">");
+  message += F(".adressfild {width: 35px; text-align: center;}");
+  message += F("</style>");
+  message += F("<script type=\"text/javascript\">\n");
+  message += F("function openUrl(url) {\n");
+  message += F("var request = new XMLHttpRequest();\n");
+  message += F("request.open('GET', url, true);\n");
+  message += F("request.send(null);\n ");
+  message += F("};\n ");
+  message += refreshTempMessage("mqtt");
+  message += F("</script>");
+  message += F("</head>\n");
+  message += F("<body>\n");
+  message += F("<form name=\"mqtt\" method=\"get\" action=\"/save\">\n");
+  message += F("<h3>Настройка MQTT</h3>\n");
+  message += F("<br />");
+  message += F("<input type = \"checkbox\" name=\"useMQTT\" id=\"useMQTT\" ");
+  if (useMQTT == true) message += F(" checked=\"checked\"");
+  message += F("onchange=\"openUrl('/switch?useMQTT=' + this.checked);\" ");
+  message += F("<label for=\"useMQTT\"> включить MQTT</label>");
+  message += F("<p>");
+
+  message += F("Адрес сервера:<br/>\n");
+  message += F("<input type=\"text\" name=\"");
+  message += F("mqttServer");
+  message += F("\" maxlength=");
+  message += String(maxStrParamLength);
+  message += F(" value=\"");
+  message += quoteEscape(mqttServer);
+  message += F("\" />\n");
+
+  message += F("<br/>\n");
+
+  message += F("Порт:<br/>\n");
+  message += F("<input type=\"mqttServerPort\" name=\"");
+  message += F("mqttServerPort");
+  message += F("\" maxlength=");
+  message += String(maxStrParamLength);
+  message += F(" value=\"");
+  message += quoteEscape(String(mqttServerPort));
+  message += F("\" />\n");
+
+  message += F("<br/>");
+
+  message += F("Имя пользователя:<br/>\n");
+  message += F("<input type=\"mqttUser\" name=\"");
+  message += F("mqttUser");
+  message += F("\" maxlength=");
+  message += String(maxStrParamLength);
+  message += F(" value=\"");
+  message += quoteEscape(mqttUser);
+  message += F("\" />\n");
+
+  message += F("<br/>");
+
+  message += F("Пароль:<br/>\n");
+  message += F("<input type=\"mqttUserPassword\" name=\"");
+  message += F("mqttUserPassword");
+  message += F("\" maxlength=");
+  message += String(maxStrParamLength);
+  message += F(" value=\"");
+  message += quoteEscape(mqttUserPassword);
+  message += F("\" />\n");
+
+  message += F("<br/>");
+
+  message += F("ClientId (MQTT):<br/>\n");
+  message += F("<input type=\"mqttClientId\" name=\"");
+  message += F("mqttClientId");
+  message += F("\" maxlength=");
+  message += String(maxStrParamLength);
+  message += F(" value=\"");
+  message += quoteEscape(mqttClientId);
+  message += F("\" />\n");
+
+  message += F("<br/>");
+
+  message += F("<p><br/>");
+  message += F("<input type=\"button\" value=\"Назад\" onclick=\"location.href='/'\">");
+  message += F("<input type=\"submit\" value=\"Сохранить\" />\n");
+  message += F("<input type=\"hidden\" name=\"");
+  message += F("reboot");
+  message += F("\" value=\"1\" />\n");
+  message += F("</form>\n");
+  message += F("</body>\n");
+  message += F("</html>");
+
+  server.send(200, F("text/html"), message);
+}
 //--------------------------------------------------------------------------------------
+void mqttCallback(char* topic, byte* payload, unsigned int length) {
+  Serial.print(F("MQTT message arrived ["));
+  Serial.print(topic);
+  Serial.print(F("] "));
+  for (int i = 0; i < length; i++) {
+    Serial.print((char)payload[i]);
+  }
+  Serial.println();
+
+  /*char* topicBody = topic + mqttClient.length() + 1; // Skip "/ClientName" from topic
+    if (! strncmp(topicBody, mqttTopic.c_str(), mqttTopic.length())) {
+    switch ((char)payload[0]) {
+      case '0':
+        switchRelay(false);
+        break;
+      case '1':
+        switchRelay(true);
+        break;
+      default:
+        bool relay = digitalRead(relayPin);
+        if (! relayLevel)
+          relay = ! relay;
+        mqtt_publish(pubsubClient, String(topic), String(relay));
+    }
+    }
+    else {
+    Serial.println(F("Unexpected topic!"));
+    }
+  */
+  String s;
+
+
+  s = String(topic); s.replace(F("/"), "");
+  if (s.indexOf(F("swt1")) != -1) {
+    switch ((char)payload[0]) {
+      case '0':
+        Prg_swt1 = false;
+        break;
+      case '1':
+        Prg_swt1 = true;
+        break;
+      default:
+        mqttClient.publish(String("swt/1").c_str(), String(Prg_swt1).c_str(), true);
+    }
+  }
+  else if (s.indexOf(F("swt2")) != -1) {
+    switch ((char)payload[0]) {
+      case '0':
+        Prg_swt2 = false;
+        break;
+      case '1':
+        Prg_swt2 = true;
+        break;
+      default:
+        mqttClient.publish(String("swt/2").c_str(), String(Prg_swt2).c_str(), true);
+    }
+  }
+  else if (s.indexOf(F("swt3")) != -1) {
+    switch ((char)payload[0]) {
+      case '0':
+        Prg_swt3 = false;
+        break;
+      case '1':
+        Prg_swt3 = true;
+        break;
+      default:
+        mqttClient.publish(String("swt/3").c_str(), String(Prg_swt3).c_str(), true);
+    }
+  }
+}
+//-------------------------------------------------------------------
 void h_reboot() {
   Serial.println(F("/reboot()"));
 
@@ -647,7 +817,7 @@ void h_reboot() {
   page += charCloseBrace;
 
   httpServer->send(200, FPSTR(textJson), page);
-}*/
+  }*/
 void setTime(uint32_t now) {
   Serial.println(now);
   Serial.println(millis());
@@ -659,8 +829,8 @@ void handleSetTime() {
   Serial.print(server.arg("time"));
   Serial.println(')');
   //parseUnixTime(server.arg("time").toInt()+timeZone*3600, R_hour, R_min, R_sec, R_wd, R_day, R_month, R_year);
-  startTime=server.arg("time").toInt()+timeZone*3600;
-  startMs=millis();
+  startTime = server.arg("time").toInt() + timeZone * 3600;
+  startMs = millis();
   server.send(200, F("text/html"), "ok");
 }
 //-------------------------------------------------------
@@ -668,7 +838,7 @@ void handleTimeConfig()
 {
   LoginContr();
   String message;
-  
+
   message = F("<!DOCTYPE html>");
   message += F("<html>");
   message += F("<head>");
@@ -686,7 +856,7 @@ void handleTimeConfig()
   message += F("function updateTime() {");
   message += F("openUrl('/settime?time=' + Math.floor(Date.now() / 1000) + '&dummy=' + Date.now());\n");
   message += F("}");
-  
+
   message += F("function refreshData(){\n");
   message +=   F("var request = new XMLHttpRequest();\n");
   message +=   F("request.open('GET', '/data_mainPage', true);\n");
@@ -698,7 +868,7 @@ void handleTimeConfig()
   message +=   F("}\n");
   message += F("setInterval(refreshData, 1000);\n");
   message += F("</script>");
-  message += F("</head>"); 
+  message += F("</head>");
   message += webPageBody();
   message += F("<form name=\"time\" method=\"get\" action=\"/save\">");
   message += F("<b>Установки синхронизации времени</b><p>\n");
@@ -707,8 +877,8 @@ void handleTimeConfig()
   if (ntpUpd == 1) message += " checked=\"checked\"";
   message += F("onchange=\"openUrl('/switch?ntpUpd=' + this.checked);\" ");
   message += F("<label for=\"ntpUpd\">Обновлять время по NTP</label>");
-  
-  message += F("<br>\n");      
+
+  message += F("<br>\n");
   message += F("<input id=\"ntpServer1\" name=\"ntpServer1\" type=\"text\" value=\"");
   message += ntpServer1;
   message += F("\" maxlength=\"32\"/> NTP 1<br/>\n");

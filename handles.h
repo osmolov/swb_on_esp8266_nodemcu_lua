@@ -38,6 +38,10 @@ String textStyle()
   message += F("width: 45px; height: 20px; text-align: center;");
   message += F("text-align: center;");
   message += F("}");
+  message += F(".textStyle3 {");
+  message += F("width: 130px; height: 20px; text-align: left;");
+  message += F("text-align: center;");
+  message += F("}");
 
   return message;
 }
@@ -186,6 +190,7 @@ void handleRoot()
   message += F("<input type = \"button\" class=\"menu_but\" value=\"Выбор программы\" onclick=\"location.href='/selprog';\" /><br>\n");
   message += F("<p>");
   message += F("<input type = \"button\" class=\"menu_but\" id=\"butt_adjWifi\" value=\"Настройка Wi-fi\" onclick=\"location.href='/wifi';\" /><br>\n");
+  message += F("<input type = \"button\" class=\"menu_but\" id=\"butt_adjMQTT\" value=\"Настройка MQTT\" onclick=\"location.href='/mqtt';\" /><br>\n");
   message += F("<input type = \"button\" class=\"menu_but\" id=\"butt_adjTime\" value=\"Настройка времени\" onclick=\"location.href='/timeConf';\" /><br>\n");
   message += F("<input type = \"button\" class=\"menu_but\" id=\"butt_adjDevPrg\" value=\"Обновление прошивки\" onclick=\"location.href='/update';\" /><br>\n");
   message += F("<input type = \"button\" class=\"menu_but\" value=\"Менеджер файлов\" onclick=\"location.href='/spiffs';\" /><br>\n");
@@ -437,6 +442,31 @@ void h_dispTempInf()//dispTempProm
   server.send(200, F("text/html"), message);
 }
 //---------------------------------------------------------------------------------
+
+void save_ResumeStateFile()
+{
+  Serial.print("Try save " + NameResumeStateFile);
+  File f = SPIFFS.open("/" + NameResumeStateFile, "w");
+  if (!f) {
+    Serial.println(F("....failed"));
+  }
+  else  {
+    Serial.println(F("..... Writing SPIFFS file "));
+
+    String strM;
+    strM = F("{");
+    strM += F("\"autoMode\":"); strM += String(autoMode) + F(",");
+    strM += F("\"rele1\":"); strM += String(Prg_swt1) + F(",");
+    strM += F("\"rele2\":"); strM += String(Prg_swt2) + F(",");
+    strM += F("\"rele3\":"); strM += String(Prg_swt3);
+    strM += F("}");
+    Serial.println(strM); f.println(strM);
+    f.print(F("END"));
+    f.close();
+    Serial.println(F(" done."));
+  }
+}
+//-----------------------------------------------------------------------------------------------------------------------------
 void save_SensorConfFile()
 {
   Serial.println("Try open " + SensorConfFile);
@@ -458,7 +488,10 @@ void save_SensorConfFile()
         if (k != 7) strM += F(",");
       }
       strM += F("],");
-      strM += F("\"tNameSens\":\""); strM += String(tNameSens[i]) + F("\"");
+      strM += F("\"tNameSens\":\""); strM += String(tNameSens[i]) + F("\",");
+      strM += F("\"tdK\":"); strM += String(tdK[i]) + F(",");
+      strM += F("\"tdX\":"); strM += String(tdX[i]);
+
       strM += F("}");
       Serial.println(strM);
       f.println(strM);
@@ -544,11 +577,21 @@ void save_CfgFile()
     strM += F("}");
     Serial.println(strM); f.println(strM);
     strM = F("{\"Vol\":"); strM += F("3,");
+    strM += F("\"resumeState\":"); strM += String(resumeState) + F(",");
     strM += F("\"relayLevel\":["); strM += String(relay1Level) + F(","); strM += String(relay2Level) + F(","); strM += String(relay3Level) + F("],");
     strM += F("\"ntpServer\":[\""); strM += ntpServer1 + F("\",\""); strM += ntpServer2 + F("\",\""); strM += ntpServer3 + F("\"],");
     strM += F("\"updateInterval\":"); strM += String(updateInterval) + F(",");
     strM += F("\"timeZone\":"); strM += String(timeZone) + F(",");
     strM += F("\"ntpUpd\":"); strM += String(ntpUpd) + F(",");
+
+    strM += F("\"useMQTT\":"); strM += String(useMQTT) + F(",");
+    strM += F("\"mqttServer\":\""); strM += mqttServer + F("\",");
+
+    strM += F("\"mqttServerPort\":"); strM += String(mqttServerPort) + F(",");
+
+    strM += F("\"mqttUser\":\""); strM += mqttUser + F("\",");
+    strM += F("\"mqttUserPassword\":\""); strM += mqttUserPassword + F("\",");
+    strM += F("\"mqttClientId\":\""); strM += mqttClientId + F("\",");
 
     strM += F("\"Zaderj\":"); strM += String(Zaderj) + F(",");
     strM += F("\"jamp_t\":"); strM += String(jamp_t) + F(",");
@@ -734,6 +777,12 @@ void h_save() //save
     else if (argName == F("dn3"))               dn3 = constrain(argValue.toInt(), 0, 255);
     else if (argName == F("dn4"))               dn4 = constrain(argValue.toInt(), 0, 255);
 
+    else if (argName == F("mqttServer"))     mqttServer = argValue;
+    else if (argName == F("mqttServerPort"))     mqttServerPort = constrain(argValue.toInt(), 1024, 65535);
+    else if (argName == F("mqttUser"))     mqttUser = argValue;
+    else if (argName == F("mqttUserPassword"))     mqttUserPassword = argValue;
+    else if (argName == F("mqttClientId"))     mqttClientId = argValue;
+
     else if (argName == F("MixOnHour"))   MixOnHour = constrain(argValue.toInt(), 0, 23);
     else if (argName == F("MixOnMin"))     MixOnMin = constrain(argValue.toInt(), 0, 59);
     else if (argName == F("MixOnSec"))     MixOnSec = constrain(argValue.toInt(), 0, 59);
@@ -843,6 +892,14 @@ void h_save() //save
       String argN;
       argN = F("tNameSens"); argN += String(k);
       if (argName == argN) tNameSens[k] = argValue;
+
+      argN = F("tdK"); argN += String(k);
+      if (argName == argN) tdK[k] = atof(argValue.c_str());
+
+      argN = F("tdX"); argN += String(k);
+      if (argName == argN) tdX[k] = atof(argValue.c_str());
+
+
     }
   }
   writeConfig();
@@ -862,6 +919,39 @@ void h_save() //save
   message += F("</html>");
 
   server.send(200, F("text/html"), message);
+
+}
+//-------------------------------------------------------------------------
+void h_save_kor() //save_kor
+{
+  LoginContr();
+  String argName, argValue;
+  Serial.println("module save");
+  Serial.print("args()=");
+  Serial.println(server.args());
+  for (byte i = 0; i < server.args(); i++)
+  {
+    argName = server.argName(i);
+    Serial.print(argName);
+    Serial.print("=\"");
+    argValue = server.arg(i);
+    Serial.print(argValue);
+    Serial.println("\"");
+
+    for (uint8_t k = 0; k < NSenseMax; k++)  {
+      String argN;
+
+      argN = F("tdK"); argN += String(k);
+      if (argName == argN) tdK[k] = atof(argValue.c_str());
+
+      argN = F("tdX"); argN += String(k);
+      if (argName == argN) tdX[k] = atof(argValue.c_str());
+
+
+    }
+  }
+
+  server.send(200, F("text/html"), F("ok"));
 
 }
 //-------------------------------------------------------------------------
@@ -934,6 +1024,19 @@ void h_select()//select
   message += F("request.open('GET', url, true);");
   message += F("request.send(null);");
   message += F("}");
+  message += F("function tdelta(elName, diff){");
+  message += F("if (isNaN(parseFloat(document.getElementById(elName).value,10))==true) document.getElementById(elName).value=0;");
+  message += F("if (isNaN(parseFloat(document.getElementById(elName).value,10))==false) document.getElementById(elName).value=parseFloat(document.getElementById(elName).value,10);");
+  message += F("var count = parseFloat(document.getElementById(elName).value,10);");
+  message += F("count = count + diff;");
+  message += F("if (count < -10) count = -10;");
+  message += F("if (count > 10) count = 10;");
+  message += F("document.getElementById(elName).value = precisionRound(count, 2);openUrl('/save_kor?'+elName+'='+document.getElementById(elName).value);");
+  message += F("}");
+  message += F("function precisionRound(number, precision) {");
+  message += F("var factor = Math.pow(10, precision);");
+  message += F("return Math.round(number * factor) / factor;");
+  message += F("}");
   message += F("function PowChange(Powval,k){");
   message += F("var ret;");
   message += F("if (isNaN(Powval)==true) return 0;");
@@ -955,20 +1058,37 @@ void h_select()//select
   message +=         F("document.getElementById('relay1Level').checked = data.relay1Level;\n");
   message +=         F("document.getElementById('relay2Level').checked = data.relay2Level;\n");
   message +=         F("document.getElementById('relay3Level').checked = data.relay3Level;\n");
+  for (byte i = 0; i < NSenseFact; i++) {
+    if (t[i] == 1) {
+      message += F("document.getElementById('tempC"); message += String(i); message += F("').innerHTML = data.tempC"); message += String(i); message += F(";\n");
+      message += F("document.getElementById('tempC_KX"); message += String(i); message += F("').innerHTML = data.tempC_KX"); message += String(i); message += F(";\n");
+    }
+  }
   message +=         F("if (data.beepeep > 0) {document.location.href = \"/alert\"}}};\n");
   message +=   F("request.send(null);\n");
   message +=   F("}\n");
   message += F("setInterval(refreshSens, 1000);\n");
+
   message += refreshTempMessage("select");
   message += F("</script>");
   message += F("</head>");
   message += F("<body>");
   message += F("<form method=\"get\" action=\"/save\">");
   message += F("<h3>Управление контролем</h3>");
-  //message += "<br>";
+  
   message += F("&nbsp;<fieldset style=\"width: 304px\">");
-  message += F("<legend><b>Активация реле высоким уровнем</b></legend>");
+  message += F("<legend><b>Настройки реле</b></legend>");
+  message += "<br>";
+  message += F("<input type=\"checkbox\" name=\"resumeState\" class=\"checkbox\" id=\"resumeState\" onchange=\"openUrl('/switch?resumeState=' + this.checked);\" ");
+  if (resumeState == 1) message += F("checked ");
+  message += F("/><label for=\"resumeState\">Восстанавливать сотояния реле</label>");
+
   message += F("<br>");
+  message += F("<br>");
+  message += F("<b>Активация реле высоким уровнем</b>");
+  message += F("<br>");
+  message += F("<br>");
+
   message += F("<input type=\"checkbox\" name=\"relay1Level\" class=\"checkbox\" id=\"relay1Level\" onchange=\"openUrl('/switch?relay1Level=' + this.checked);\" ");
   if (relay1Level == 1) message += F("checked ");
   message += F("/><label for=\"relay1Level\">Нагрев</label><p>");
@@ -982,7 +1102,7 @@ void h_select()//select
   message += F("/><label for=\"relay3Level\">Отбор</label>");
   message += F("</fieldset>");
 
-  message += F("&nbsp;<fieldset style=\"width: 304px\">");
+  message += F("&nbsp;<fieldset style=\"width: 304px; text-align: left;\">");
   message += F("<legend><b>Активация датчиков</b></legend>");
   message += F("<br>");
 
@@ -991,10 +1111,25 @@ void h_select()//select
       message += F("<input type=\"checkbox\" name=\"t"); message += String(i); message += F("\" class=\"checkbox\" id=\"t"); message += String(i);
       message += F("\" onchange=\"openUrl('/switch?SenseStatus"); message += String(i); message += F("=' + this.checked);\" ");
       if (t[i] == 1) message += F("checked ");
-      message += F("/><label for=\"t"); message += String(i); message += F("\">Датчик "); message += String(i); message += F(" </label>");
-      message += F("<input type=\"text\" name=\"tNameSens"); message += String(i); message += F("\" id=\"tNameSens"); message += String(i) + (" maxlength=\"30\" value=\"");
+      message += F("/><label for=\"t"); message += String(i); message += F("\">Д"); message += String(i); message += F(" </label>");
+      message += F("<input type=\"text\" name=\"tNameSens"); message += String(i); message += F("\" id=\"tNameSens"); message += String(i) + ("\" class=\"textStyle3\" maxlength=\"30\" value=\"");
       message += tNameSens[i]; message += F("\" />");
+      message += F("<br>      ");
+      message += F("<input type=\"button\" value=\"-1\" onclick=\"tdelta('tdK"); message += String(i); message += F("', -1)\"/><input type=\"button\" value=\"-0.10\" onclick=\"tdelta('tdK"); message += String(i); message += F("', -0.10)\"/>");
+      message += F("<input readonly class=\"textStyle2\" maxlength=\"5\" name=\"tdK"); message += String(i); message += F("\" id=\"tdK"); message += String(i); message += F("\" value=\""); message += String(tdK[i]); message += F("\"/>");
+      message += F("<input type=\"button\" value=\"+0.10\" onclick=\"tdelta('tdK"); message += String(i); message += F("', 0.10)\"/><input type=\"button\" value=\"+1\" onclick=\"tdelta('tdK"); message += String(i); message += F("', 1)\"/>");
+      message += F(" dK,%");
+      message += F("<br>      ");
+      message += F("<input type=\"button\" value=\"-1\" onclick=\"tdelta('tdX"); message += String(i); message += F("', -1)\"/><input type=\"button\" value=\"-0.01\" onclick=\"tdelta('tdX"); message += String(i); message += F("', -0.01)\"/>");
+      message += F("<input readonly class=\"textStyle2\" maxlength=\"5\" name=\"tdX"); message += String(i); message += F("\" id=\"tdX"); message += String(i); message += F("\" value=\""); message += String(tdX[i]); message += F("\"/>");
+      message += F("<input type=\"button\" value=\"+0.01\" onclick=\"tdelta('tdX"); message += String(i); message += F("', 0.01)\"/><input type=\"button\" value=\"+1\" onclick=\"tdelta('tdX"); message += String(i); message += F("', 1)\"/>");
+      message += F(" dX,&#176С");
+      message += F("<br>      ");
 
+      message += F("До корр"); message += F(": <span id=\"tempC_KX"); message += String(i); message += F("\">.</span> &#176С ");
+      message += F("После"); message += F(": <span id=\"tempC"); message += String(i); message += F("\">.</span> &#176С ");
+
+      message += F("<br />\n");
       message += F("<p>");
     }
   }
@@ -1002,9 +1137,9 @@ void h_select()//select
 
   message += F("&nbsp;<fieldset style=\"width: 304px\">");
   message += F("<legend><b>Настройка датчиков</b></legend>");
-  
+
   message += F("<input name = \"error_read_ds_Max\" id=\"error_read_ds_Max\" type=\"text\" value=\"");
-  message += String(error_read_ds_Max) + F("\" class=\"textStyle2\" title=\"Разрешенное количество ошибок (подряд) при опросе датчиков температуры\" maxlength=\"2\"");
+  message += String(error_read_ds_Max) + F("\" class=\"textStyle2\" title=\"Разрешенное количество ошибок (подряд) при опросе датчиков температуры\" maxlength=\"5\"");
   message += F("/> Кол.ошибок (подряд) при опросе<br />");
 
   message += F("<input name=\"t_msec_get_ds\" id=\"t_msec_get_ds\" type=\"text\" value=\"");
@@ -1100,6 +1235,7 @@ void h_data_mainPage()//data_mainPage
   for (byte i = 0; i <= NSenseFact; i++) {
     if (t[i] == 1) {//датчик активен (0-не использ,1-активен,2-используется но не активен)
       message += F("\"tempC"); message += String(i); message += F("\":"); message += tempC[i]; message += F(",");
+      message += F("\"tempC_KX"); message += String(i); message += F("\":"); message += tempC_KX[i]; message += F(",");
     }
   }
   message += F("\"beepeep\":"); message += erSt;

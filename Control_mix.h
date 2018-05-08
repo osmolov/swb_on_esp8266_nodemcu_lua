@@ -357,6 +357,7 @@ void working_Mix()
   {
     if (prev_swt2 != Prg_swt2)
     {
+      mqttClient.publish(String("swt/2").c_str(), String(Prg_swt2).c_str(), true);
       prev_swt2 = Prg_swt2;
       if (Prg == true)
       {
@@ -383,6 +384,7 @@ void working_Mix()
     {
       Serial.println("  swt2 false = " + String(Prg_swt2));
       prev_swt2 = Prg_swt2;
+      mqttClient.publish(String("swt/2").c_str(), String(Prg_swt2).c_str(), true);
     }
   }
 
