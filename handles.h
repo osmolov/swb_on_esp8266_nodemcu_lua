@@ -154,7 +154,7 @@ void handleRoot()
   message += F("</head>\n");
   message += F("<body>\n");
   message += F("<form>\n");
-  message += F("<h3>Управление котлом v.2.4</h3><p>\n");
+  message += F("<h3>Управление котлом v.2.5</h3><p>\n");
   message += F("<span id=\"timeStr\">.</span><br>\n");
   message += F("Время работы: <span id=\"TimeOn\">.</span></p>\n");
   message += F("<input type=\"checkbox\" class=\"checkbox\" id=\"relay1\" onchange=\"openUrl('/switch?swt1=' + this.checked);\" ");
@@ -180,6 +180,9 @@ void handleRoot()
       message += F("<br />\n");
     }
   }
+  #ifdef USE_BMP280
+  message += F("mmHg="); message += String(bmePressure); message += F("<br/>\n");
+  #endif
   message += F("<p>\n");
 
   message += F("<input type = \"button\" class=\"menu_but\" id=\"butt_adjWarm\" value=\"Настройка нагрева\" onclick=\"location.href='/warm';\" /><br>\n");

@@ -11,6 +11,21 @@
 //#define USE_LOG
 //#define USE_LCD
 //#define USE_IRREMOTE
+#define USE_BMP280 // Use BMP280 Atmosphere Pressure sensor?
+
+// ----------------------- BMP280 Declare --------------------------------------------------------------------------------------------
+#ifdef USE_BMP280
+#include <Wire.h>
+#include <SPI.h>
+#include <Adafruit_Sensor.h>
+#include <Adafruit_BMP280.h>
+
+#define SEALEVELPRESSURE_HPA (1013.25)
+
+Adafruit_BMP280 bme;
+
+float bmePressure, bmePressure_now;
+#endif
 
 //----------общие переменные и константы----------------------------------------------------------------------------------------------
 //назначаем пины
@@ -982,6 +997,12 @@ void setup()
 
   setupWiFi();
 
+#ifdef USE_BMP280
+    Wire.begin(D3, D6);
+    delay(10);
+    bme.begin(0x76);  
+    delay(10);
+#endif
 
   //-------------------------------------------------
 
@@ -1071,6 +1092,7 @@ void loop()
   const uint32_t timeout = 180000; // 3 min.
   static uint32_t nextTime = timeout;
   static uint32_t nextTimeMQTT = timeout;
+  static uint32_t nextTimeBMP280 = 30000;
   uint32_t t_sec, vol_hour, vol_min, vol_sec;
 
   if ((!ApMode) && (WiFi.status() != WL_CONNECTED) && ((WiFi.getMode() == WIFI_STA) || ((int32_t)(millis() - nextTime) >= 0)))  {
@@ -1268,8 +1290,6 @@ void loop()
   parseUnixTime(now_timeUnx, now_hour, now_min, now_sec, now_wd, now_day, now_month, now_year);
   timeStr = dateWdTimeToStr(now_timeUnx);
 
-
-
   if ((!ApMode) && (WiFi.status() == WL_CONNECTED) && useMQTT && !mqttClient.connected()) {
     if (((int32_t)(millis() - nextTimeMQTT) >= 0) || (nextTimeMQTT == timeout))  {
       nextTimeMQTT = millis() + timeout;
@@ -1285,7 +1305,7 @@ void loop()
         Serial.println("..Connecting to MQTT...");
         if (mqttClient.connect(mqttClientId.c_str(), mqttUser.c_str(), mqttUserPassword.c_str())) {
           //mqttClient.subscribe("text/#");
-          mqttClient.subscribe("swt/#");
+          mqttClient.subscribe((mqttClientId + "/swt/#").c_str());
           Serial.println("connected");
           break;
 
@@ -1299,5 +1319,23 @@ void loop()
 
   if (useMQTT) mqttClient.loop();
 
+#ifdef USE_BMP280
+if (((int32_t)(millis() - nextTimeBMP280) >= 0) || (nextTimeBMP280 == timeout))  {
+    nextTimeBMP280 = millis() + timeout;
+    bmePressure_now = bme.readPressure() * 0.75F / 100.00F;
+    for (uint8_t i = 0; i < 5; i++) {
+      if (abs(650 - bmePressure_now) <= 200 && abs(650 - bmePressure_now) >= 0) {
+         bmePressure = bmePressure_now;
+         break;
+      }
+      delay(10);
+    }
+    if (useMQTT) {
+       mqttClient.publish((mqttClientId + "/bmp280/temp").c_str(), String(bme.readTemperature()).c_str(), true); 
+       mqttClient.publish((mqttClientId + "/bmp280/mmhg").c_str(), String(bmePressure).c_str(), true); 
+       mqttClient.publish((mqttClientId + "/bmp280/alt").c_str(), String(bme.readAltitude(SEALEVELPRESSURE_HPA)).c_str(), true); 
+    }
+}
+#endif
 }
 //--------------------------------------------------------------------------------------

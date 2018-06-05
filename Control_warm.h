@@ -419,7 +419,7 @@ void working_Warm()
       for (uint8_t i = 0; i < NSenseMax; i++)  {
         if ((t[i] == 1) && tempC[i] != tempC_mqtt[i]) {
           tempC_mqtt[i] = tempC[i];
-          mqttClient.publish(("temp/t" + String(i)).c_str(), String(tempC_mqtt[i]).c_str(), true);
+          mqttClient.publish((mqttClientId + "/temp/t" + String(i)).c_str(), String(tempC_mqtt[i]).c_str(), true);
           //Serial.println("temp/t" + String(i));
         }
       }
@@ -434,7 +434,7 @@ void working_Warm()
     if (prev_swt1 != Prg_swt1)
     {
       prev_swt1 = Prg_swt1;
-      mqttClient.publish(String("swt/1").c_str(), String(Prg_swt1).c_str(), true);
+      mqttClient.publish(String(mqttClientId + "/swt/1").c_str(), String(Prg_swt1).c_str(), true);
       if (Prg == true)
       {
         
@@ -462,7 +462,7 @@ void working_Warm()
     if (prev_swt1 != Prg_swt1)
     {
       prev_swt1 = Prg_swt1;
-      mqttClient.publish(String("swt/1").c_str(), String(Prg_swt1).c_str(), true);
+      mqttClient.publish(String(mqttClientId + "/swt/1").c_str(), String(Prg_swt1).c_str(), true);
     }
 
   }

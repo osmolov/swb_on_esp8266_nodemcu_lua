@@ -121,13 +121,13 @@ void working_Otbor()
     if (Prg_swt3 != prev_swt3) {
       t_otb = t_prom;
       prev_swt3 = Prg_swt3;
-      mqttClient.publish(String("swt/3").c_str(), String(Prg_swt3).c_str(), true);
+      mqttClient.publish(String(mqttClientId + "/swt/3").c_str(), String(Prg_swt3).c_str(), true);
     }
   }
   else {
     if (Prg_swt3 != prev_swt3) {
       prev_swt3 = Prg_swt3;
-      mqttClient.publish(String("swt/3").c_str(), String(Prg_swt3).c_str(), true);
+      mqttClient.publish(String(mqttClientId + "/swt/3").c_str(), String(Prg_swt3).c_str(), true);
     }
   }
   if (Prg_swt3 == HIGH)

@@ -737,7 +737,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
         Prg_swt1 = true;
         break;
       default:
-        mqttClient.publish(String("swt/1").c_str(), String(Prg_swt1).c_str(), true);
+        mqttClient.publish(String(mqttClientId + "/swt/1").c_str(), String(Prg_swt1).c_str(), true);
     }
   }
   else if (s.indexOf(F("swt2")) != -1) {
@@ -749,7 +749,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
         Prg_swt2 = true;
         break;
       default:
-        mqttClient.publish(String("swt/2").c_str(), String(Prg_swt2).c_str(), true);
+        mqttClient.publish(String(mqttClientId + "/swt/2").c_str(), String(Prg_swt2).c_str(), true);
     }
   }
   else if (s.indexOf(F("swt3")) != -1) {
@@ -761,7 +761,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
         Prg_swt3 = true;
         break;
       default:
-        mqttClient.publish(String("swt/3").c_str(), String(Prg_swt3).c_str(), true);
+        mqttClient.publish(String(mqttClientId + "/swt/3").c_str(), String(Prg_swt3).c_str(), true);
     }
   }
 }
