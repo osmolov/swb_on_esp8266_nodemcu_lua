@@ -90,6 +90,10 @@ void h_switch()//switch
       if (argValue == F("true")) useMQTT  = 1;
       else useMQTT = 0;
     }
+    else if (argName == F("useViber")) {
+      if (argValue == F("true")) useViber  = 1;
+      else useViber = 0;
+    }
 
     else if (argName == F("Prg_Save")) {
       /*if (NumStrPrgAll > 2) {
@@ -510,4 +514,3 @@ void h_switch()//switch
   server.send(resp, F("text/html"), message);
 }
 //----------------------------------------------------------------------------------------------
-

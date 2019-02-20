@@ -154,7 +154,7 @@ void handleRoot()
   message += F("</head>\n");
   message += F("<body>\n");
   message += F("<form>\n");
-  message += F("<h3>Управление котлом v.2.5</h3><p>\n");
+  message += F("<h3>Управление котлом v.2.6</h3><p>\n");
   message += F("<span id=\"timeStr\">.</span><br>\n");
   message += F("Время работы: <span id=\"TimeOn\">.</span></p>\n");
   message += F("<input type=\"checkbox\" class=\"checkbox\" id=\"relay1\" onchange=\"openUrl('/switch?swt1=' + this.checked);\" ");
@@ -194,6 +194,9 @@ void handleRoot()
   message += F("<p>");
   message += F("<input type = \"button\" class=\"menu_but\" id=\"butt_adjWifi\" value=\"Настройка Wi-fi\" onclick=\"location.href='/wifi';\" /><br>\n");
   message += F("<input type = \"button\" class=\"menu_but\" id=\"butt_adjMQTT\" value=\"Настройка MQTT\" onclick=\"location.href='/mqtt';\" /><br>\n");
+  #ifdef USE_VIBER
+  message += F("<input type = \"button\" class=\"menu_but\" id=\"butt_adjViber\" value=\"Настройка Viber\" onclick=\"location.href='/viber';\" /><br>\n");
+  #endif
   message += F("<input type = \"button\" class=\"menu_but\" id=\"butt_adjTime\" value=\"Настройка времени\" onclick=\"location.href='/timeConf';\" /><br>\n");
   message += F("<input type = \"button\" class=\"menu_but\" id=\"butt_adjDevPrg\" value=\"Обновление прошивки\" onclick=\"location.href='/update';\" /><br>\n");
   message += F("<input type = \"button\" class=\"menu_but\" value=\"Менеджер файлов\" onclick=\"location.href='/spiffs';\" /><br>\n");
@@ -596,6 +599,12 @@ void save_CfgFile()
     strM += F("\"mqttUserPassword\":\""); strM += mqttUserPassword + F("\",");
     strM += F("\"mqttClientId\":\""); strM += mqttClientId + F("\",");
 
+    strM += F("\"useViber\":"); strM += String(useViber) + F(",");
+    strM += F("\"viberURL\":\""); strM += viberURL + F("\",");
+    strM += F("\"viberUserId\":\""); strM += viberUserId + F("\",");
+    strM += F("\"viberAuthToken\":\""); strM += viberAuthToken + F("\",");
+    strM += F("\"viberPeriodic\":"); strM += String(viberPeriodic) + F(",");
+
     strM += F("\"Zaderj\":"); strM += String(Zaderj) + F(",");
     strM += F("\"jamp_t\":"); strM += String(jamp_t) + F(",");
     strM += F("\"error_read_ds_Max\":"); strM += String(error_read_ds_Max) + F(",");
@@ -786,6 +795,11 @@ void h_save() //save
     else if (argName == F("mqttUserPassword"))     mqttUserPassword = argValue;
     else if (argName == F("mqttClientId"))     mqttClientId = argValue;
 
+    else if (argName == F("viberURL"))     viberURL = argValue;
+    else if (argName == F("viberAuthToken"))     viberAuthToken = argValue;
+    else if (argName == F("viberUserId"))     viberUserId = argValue;
+    else if (argName == F("viberPeriodic"))     viberPeriodic = constrain(argValue.toInt(), 0, 3600000);
+
     else if (argName == F("MixOnHour"))   MixOnHour = constrain(argValue.toInt(), 0, 23);
     else if (argName == F("MixOnMin"))     MixOnMin = constrain(argValue.toInt(), 0, 59);
     else if (argName == F("MixOnSec"))     MixOnSec = constrain(argValue.toInt(), 0, 59);
@@ -916,7 +930,7 @@ void h_save() //save
   message += F("<meta charset=\"utf-8\" http-equiv=\"refresh\" content=\"0; /index.html\">");
   message += F("</head>");
   message += F("<body>");
-  message += F("Настройи сохранены успешно.");
+  message += F("Настройки сохранены успешно.");
   message += F("<p>Ждите 1 сек. или нажмите <a href=\"/index.html\">сюда</a> для перехода в главное меню.");
   message += F("</body>");
   message += F("</html>");
@@ -1285,4 +1299,3 @@ void handleSetTimer() {
 
   server.send(200, F("text/html"), message);
 }
-

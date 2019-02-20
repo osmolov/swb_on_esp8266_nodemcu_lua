@@ -694,6 +694,94 @@ void h_mqtt()//mqtt
 
   server.send(200, F("text/html"), message);
 }
+//----------------------------------------------------------------------------------------
+void h_viber()//viber
+{
+  LoginContr();
+  String message = F("<!DOCTYPE html>\n");
+  message += F("<html>\n");
+  message += F("<head>\n");
+  message += F("<title>Настройка Viber</title>\n");
+  message += F("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n");
+  message += F("<meta charset=\"utf-8\">\n");
+  message += F("<style type=\"text/css\">");
+  message += F(".adressfild {width: 35px; text-align: center;}");
+  message += F("</style>");
+  message += F("<script type=\"text/javascript\">\n");
+  message += F("function openUrl(url) {\n");
+  message += F("var request = new XMLHttpRequest();\n");
+  message += F("request.open('GET', url, true);\n");
+  message += F("request.send(null);\n ");
+  message += F("};\n ");
+  message += refreshTempMessage("viber");
+  message += F("</script>");
+  message += F("</head>\n");
+  message += F("<body>\n");
+  message += F("<form name=\"viber\" method=\"get\" action=\"/save\">\n");
+  message += F("<h3>Настройка Viber</h3>\n");
+  message += F("<br />");
+  message += F("<input type = \"checkbox\" name=\"useViber\" id=\"useViber\" ");
+  if (useViber == true) message += F(" checked=\"checked\"");
+  message += F("onchange=\"openUrl('/switch?useViber=' + this.checked);\" ");
+  message += F("<label for=\"useViber\"> включить Viber</label>");
+  message += F("<p>");
+
+  message += F("URL для отправки сообщений:<br/>\n");
+  message += F("<input type=\"text\" name=\"");
+  message += F("viberURL");
+  message += F("\" maxlength=");
+  message += String(255);
+  message += F(" value=\"");
+  message += quoteEscape(viberURL);
+  message += F("\" />\n");
+
+  message += F("<br/>\n");
+
+  message += F("Auth Token:<br/>\n");
+  message += F("<input type=\"viberAuthToken\" name=\"");
+  message += F("viberAuthToken");
+  message += F("\" maxlength=");
+  message += String(50);
+  message += F(" value=\"");
+  message += quoteEscape(String(viberAuthToken));
+  message += F("\" />\n");
+
+  message += F("<br/>");
+
+  message += F("Id пользователя - получателя:<br/>\n");
+  message += F("<input type=\"viberUserId\" name=\"");
+  message += F("viberUserId");
+  message += F("\" maxlength=");
+  message += String(maxStrParamLength);
+  message += F(" value=\"");
+  message += quoteEscape(viberUserId);
+  message += F("\" />\n");
+
+  message += F("<br/>");
+
+  message += F("Период отправки статуса:<br/>\n");
+  message += F("<input type=\"viberPeriodic\" name=\"");
+  message += F("viberPeriodic");
+  message += F("\" maxlength=");
+  message += String(maxStrParamLength);
+  message += F(" value=\"");
+  message += quoteEscape(String(viberPeriodic));
+  message += F("\" />\n");
+
+  message += F("<br/>");
+
+  message += F("<p><br/>");
+  message += F("<input type=\"button\" value=\"Назад\" onclick=\"location.href='/'\">");
+  message += F("<input type=\"submit\" value=\"Сохранить\" />\n");
+  message += F("<input type=\"hidden\" name=\"");
+  message += F("reboot");
+  message += F("\" value=\"1\" />\n");
+  message += F("</form>\n");
+  message += F("</body>\n");
+  message += F("</html>");
+
+  server.send(200, F("text/html"), message);
+}
 //--------------------------------------------------------------------------------------
 void mqttCallback(char* topic, byte* payload, unsigned int length) {
   Serial.print(F("MQTT message arrived ["));
@@ -920,5 +1008,3 @@ void handleTimeConfig()
 
   server.send(200, F("text/html"), message);
 }
-
-

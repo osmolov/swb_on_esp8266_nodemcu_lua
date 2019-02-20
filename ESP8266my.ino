@@ -1,5 +1,5 @@
 //------------------------------------------------------------------------------------------------------------------------------------
-//управление ПВК v.2.5 (добавлено: восстановление состояний реле, MQTT, коррекция температуры мультипликативная, аддитивная)
+//управление ПВК v.2.6 (добавлено: восстановление состояний реле, MQTT, Viber, коррекция температуры мультипликативная, аддитивная)
 //основной канал автора на ютубе  "НеОбзор58"            https://www.youtube.com/channel/UC6mMZ4GGXMdpSGEy-j1EnxQ
 //второй   канал автора на ютубе  "Доступная автоматика" https://www.youtube.com/channel/UCxfwRP66zE4zwn6lgvS6wQg
 //сайт и страница проекта                                http://www.simple-automation.ru/publ/proekty/kontroller_dlja_pvk_na_baze_esp8266_nodemcu/kontroller-dlja-pvk-na-baze-esp8266-nodemcu-lua/15-1-0-10
@@ -12,6 +12,7 @@
 //#define USE_LCD
 //#define USE_IRREMOTE
 #define USE_BMP280 // Use BMP280 Atmosphere Pressure sensor?
+#define USE_VIBER // Use Viber Messager?
 
 // ----------------------- BMP280 Declare --------------------------------------------------------------------------------------------
 #ifdef USE_BMP280
@@ -83,6 +84,21 @@ PubSubClient mqttClient(espClient);
 bool useMQTT;
 String mqttServer, mqttUser, mqttUserPassword, mqttClientId;
 uint16_t mqttServerPort;
+
+// ----------------------- Viber Declare ------------------------------------------------------------------------------------------
+#ifdef USE_VIBER
+#include <ESP8266HTTPClient.h>
+
+bool useViber;
+
+String viberURL, viberAuthToken, viberUserId;
+uint32_t viberPeriodic, nextTimeViber;
+
+String json_obj;
+
+HTTPClient http;
+
+#endif
 
 //-----------датчики температуры------------------------------------------------------------------------------------------
 #include <OneWire.h>
@@ -534,6 +550,9 @@ String AddNull (String StrForAdd)
 }
 //--------------------------------------------------------------------------------------
 
+#ifdef USE_VIBER
+#include "viber.h"
+#endif
 #include "handles.h"
 #include "h_switch.h"
 #include "prg_modules.h"
@@ -542,6 +561,7 @@ String AddNull (String StrForAdd)
 #include "Control_otbor.h"
 #include "upg_spiffs.h"
 #include "Control_other.h"
+
 //---------------------------------------------------------------------------------------
 void openSettingsFile () {
 #ifdef USE_LCD
@@ -683,6 +703,11 @@ void openSettingsFile () {
                 const char* mqttUP = root["mqttUserPassword"]; if (mqttUP != noDef) mqttUserPassword = String(mqttUP);
                 const char* mqttC = root["mqttClientId"]; if (mqttC != noDef) mqttClientId = String(mqttC);
 
+                useViber = root["useViber"];
+                const char* vibUrl = root["viberURL"]; if (vibUrl != noDef) viberURL = String(vibUrl);
+                viberPeriodic = root["viberPeriodic"];
+                const char* vibAT = root["viberAuthToken"]; if (vibAT != noDef) viberAuthToken = String(vibAT);
+                const char* vibUI = root["viberUserId"]; if (vibUI != noDef) viberUserId = String(vibUI);
 
                 Zaderj = root["Zaderj"];
                 jamp_t = root["jamp_t"];
@@ -1022,6 +1047,9 @@ void setup()
   server.on("/reboot", h_reboot);
   server.on("/wifi", h_wifi);
   server.on("/mqtt", h_mqtt);
+  #ifdef USE_VIBER
+  server.on("/viber", h_viber);
+  #endif
   server.on("/otbor", h_otbor);
   server.on("/data_mainPage", HTTP_GET, h_data_mainPage);
   server.on("/open_file", HTTP_GET, h_prg_open_file);
@@ -1335,6 +1363,27 @@ if (((int32_t)(millis() - nextTimeBMP280) >= 0) || (nextTimeBMP280 == timeout)) 
        mqttClient.publish((mqttClientId + "/bmp280/mmhg").c_str(), String(bmePressure).c_str(), true); 
        mqttClient.publish((mqttClientId + "/bmp280/alt").c_str(), String(bme.readAltitude(SEALEVELPRESSURE_HPA)).c_str(), true); 
     }
+}
+#endif
+
+#ifdef USE_VIBER
+if (useViber) {
+   for (byte k = 0; k < NomMessAll; k++) {
+      if (mesTemp[k].Need == 1) {
+         if ((tempC[mesTemp[k].NsenseM] >= mesTemp[k].TempM) && (mesTemp[k].accompl == 0)) {
+            doViberAlarmMessage(k);
+            mesTemp[k].accompl = 1;
+            break;
+         }
+      }
+   }
+
+   if (viberPeriodic > 0 && ((int32_t)(millis() - nextTimeViber) >= 0) || (nextTimeViber == viberPeriodic))  {
+      nextTimeViber = millis() + viberPeriodic;
+
+      doViberStatusMessage();
+   }
+
 }
 #endif
 }
